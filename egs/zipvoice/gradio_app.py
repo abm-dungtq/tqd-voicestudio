@@ -27,6 +27,12 @@ try:
 except Exception:
     sf = None
 
+try:
+    from huggingface_hub import hf_hub_download, list_repo_files
+except Exception:
+    hf_hub_download = None
+    list_repo_files = None
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -379,6 +385,72 @@ def load_ref_presets(
     return presets
 
 
+def load_hf_larvoice_presets(
+    repo_id: str,
+    audio_prefix: str,
+    preset_count: int,
+) -> list[PresetPrompt]:
+    if preset_count <= 0 or not repo_id:
+        return []
+    if hf_hub_download is None or list_repo_files is None:
+        logging.warning("huggingface_hub is not installed; skipping LarVoice presets")
+        return []
+
+    audio_prefix = audio_prefix.strip("/")
+    try:
+        repo_files = list_repo_files(repo_id=repo_id, repo_type="model")
+    except Exception:
+        logging.exception("Failed to list LarVoice presets from %s", repo_id)
+        return []
+
+    audio_files = [
+        filename
+        for filename in repo_files
+        if filename.startswith(f"{audio_prefix}/")
+        and Path(filename).suffix.lower() in AUDIO_EXTENSIONS
+    ]
+    audio_files = sorted(audio_files, key=lambda filename: Path(filename).stem.casefold())
+
+    presets = []
+    for audio_file in audio_files[:preset_count]:
+        text_file = str(Path(audio_file).with_suffix(".txt"))
+        if text_file not in repo_files:
+            logging.warning("Missing transcript for LarVoice preset: %s", audio_file)
+            continue
+        try:
+            audio_path = Path(
+                hf_hub_download(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    filename=audio_file,
+                )
+            )
+            text_path = Path(
+                hf_hub_download(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    filename=text_file,
+                )
+            )
+        except Exception:
+            logging.exception("Failed to download LarVoice preset: %s", audio_file)
+            continue
+
+        text = text_path.read_text(encoding="utf-8").strip()
+        duration = audio_duration(str(audio_path))
+        presets.append(
+            PresetPrompt(
+                label=audio_path.stem,
+                cut_id=audio_path.stem,
+                text=text,
+                audio_path=str(audio_path),
+                duration=duration,
+            )
+        )
+
+    return presets
+
+
 def resolve_ref_audio_dir(
     exp_dir: Path,
     ref_audio_dir: Optional[str],
@@ -435,6 +507,30 @@ class ZipVoiceGradio:
         else:
             self.presets = load_presets(Path(args.train_tsv), args.preset_count)
             self.preset_source = str(args.train_tsv)
+
+        larvoice_presets = load_hf_larvoice_presets(
+            repo_id=args.larvoice_repo,
+            audio_prefix=args.larvoice_audio_prefix,
+            preset_count=args.larvoice_count,
+        )
+        existing_labels = {preset.label for preset in self.presets}
+        unique_larvoice_presets = []
+        for preset in larvoice_presets:
+            if preset.label in existing_labels:
+                preset = PresetPrompt(
+                    label=f"LarVoice | {preset.label}",
+                    cut_id=preset.cut_id,
+                    text=preset.text,
+                    audio_path=preset.audio_path,
+                    duration=preset.duration,
+                )
+            existing_labels.add(preset.label)
+            unique_larvoice_presets.append(preset)
+        self.presets.extend(unique_larvoice_presets)
+        if unique_larvoice_presets:
+            self.preset_source = (
+                f"{self.preset_source} + {args.larvoice_repo}/{args.larvoice_audio_prefix}"
+            )
         self.presets_by_label = {preset.label: preset for preset in self.presets}
 
         self.device = torch.device("cuda", 0) if torch.cuda.is_available() else torch.device("cpu")
@@ -684,6 +780,13 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument("--results-dir", default="results/gradio")
     parser.add_argument("--vocoder-path", default=None)
     parser.add_argument("--preset-count", type=int, default=30)
+    parser.add_argument(
+        "--larvoice-repo",
+        default="contextboxai/ViZipvoice",
+        help="HF model repo containing LarVoice ref audio. Empty value disables this source.",
+    )
+    parser.add_argument("--larvoice-audio-prefix", default="audio")
+    parser.add_argument("--larvoice-count", type=int, default=30)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--share", action="store_true")
