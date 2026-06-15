@@ -43,6 +43,17 @@ class PresetPrompt:
     duration: Optional[float]
 
 
+def is_larvoice_ref(*values: object) -> bool:
+    return any("larvoice" in str(value).casefold() for value in values if value)
+
+
+def ref_preset_sort_key(audio_path: Path, speaker: str = "") -> tuple[int, str]:
+    return (
+        1 if is_larvoice_ref(audio_path, speaker) else 0,
+        f"{speaker} {audio_path.name}".casefold(),
+    )
+
+
 def checkpoint_step(path: Path) -> int:
     match = re.search(r"checkpoint-(\d+)\.pt$", path.name)
     if match:
@@ -281,7 +292,7 @@ def load_sidecar_ref_presets(
     presets = []
     audio_paths = [
         path
-        for path in sorted(ref_audio_dir.iterdir())
+        for path in sorted(ref_audio_dir.iterdir(), key=ref_preset_sort_key)
         if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
     ]
     for audio_path in audio_paths[:preset_count]:
@@ -343,7 +354,9 @@ def load_ref_presets(
             candidates.append((audio_path, "", ""))
 
     presets = []
-    for audio_path, text, speaker in candidates[-preset_count:]:
+    candidates = sorted(candidates, key=lambda item: ref_preset_sort_key(item[0], item[2]))
+
+    for audio_path, text, speaker in candidates[:preset_count]:
         duration = audio_duration(str(audio_path))
         label = make_preset_label(
             index=len(presets) + 1,

@@ -67,6 +67,10 @@ class RefPrompt:
     text: str
 
 
+def is_larvoice_ref(filename: str) -> bool:
+    return "larvoice" in filename.casefold()
+
+
 def ensure_code_repo() -> None:
     refresh_code = os.getenv("VIZIPVOICE_REFRESH_CODE", "1") != "0"
     if (CODE_DIR / "zipvoice" / "vizipvoice.py").is_file() and not refresh_code:
@@ -97,11 +101,13 @@ def sorted_ref_audio_files() -> list[str]:
         and Path(filename).suffix.lower() in AUDIO_EXTENSIONS
     ]
 
-    def sort_key(filename: str) -> tuple[int, str]:
+    def sort_key(filename: str) -> tuple[int, int, str]:
         stem = Path(filename).stem
         if stem in PREFERRED_REFS:
-            return (PREFERRED_REFS.index(stem), stem)
-        return (len(PREFERRED_REFS), stem)
+            return (0, PREFERRED_REFS.index(stem), stem.casefold())
+        if is_larvoice_ref(filename):
+            return (2, 0, stem.casefold())
+        return (1, 0, stem.casefold())
 
     return sorted(audio_files, key=sort_key)
 
