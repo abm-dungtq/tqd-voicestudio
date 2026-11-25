@@ -42,8 +42,9 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from lhotse.utils import fix_random_seed
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parent.parent
-os.environ.setdefault("HF_HOME", str(ROOT / ".hf-cache"))
+from tqd_voice import paths
+
+os.environ.setdefault("HF_HOME", str(paths.hf_cache()))
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 from zipvoice.vizipvoice import (
@@ -63,6 +64,7 @@ from zipvoice.utils.infer import (
     remove_silence,
     rms_norm,
 )
+import vizipvoice_addons
 from vizipvoice_addons import asr as qc_asr
 from vizipvoice_addons import audio_formats, lexicon, script_voices, subtitles, voice_meta
 from vizipvoice_addons.asr import cer as qc_cer
@@ -134,11 +136,15 @@ def finalize_waveform_for_export(
     }
     return scaled_f32, pcm_i16, export_meta
 
-MODEL_DIR = Path(os.environ.get("VIZIPVOICE_MODEL_DIR", str(ROOT / "models" / "ViZipvoice")))
+MODEL_DIR = paths.model_dir()
 STUDIO_AUDIO_DIR = MODEL_DIR / "audio"
-META_JSON_PATH = Path(__file__).resolve().parent / "studio_voices_meta.json"
-LIBRARY_DIR = ROOT / "voice-share-vivos-17" / "voice-share-vivos-17" / "library"
-CUSTOM_VOICES_DIR = ROOT / "voices"
+META_JSON_PATH = Path(vizipvoice_addons.__file__).resolve().parent / "data" / "studio_voices_meta.json"
+LIBRARY_DIR = (
+    Path(os.environ["VIZIPVOICE_LIBRARY_DIR"])
+    if os.environ.get("VIZIPVOICE_LIBRARY_DIR")
+    else None
+)
+CUSTOM_VOICES_DIR = paths.voices_dir()
 
 MAX_STREAMS = int(os.environ.get("VIZIPVOICE_MAX_STREAMS", "4"))
 QUEUE_TIMEOUT = float(os.environ.get("VIZIPVOICE_QUEUE_TIMEOUT", "180.0"))
@@ -615,7 +621,7 @@ class ViZipVoiceEngine:
                 prompt_text = self._find_library_ref_text(name)
                 if not prompt_text:
                     prompt_text = "Xin chào, đây là mẫu giọng nói tiếng Việt tự nhiên."
-                is_vivos = (LIBRARY_DIR / name).is_dir()
+                is_vivos = LIBRARY_DIR is not None and (LIBRARY_DIR / name).is_dir()
                 desc = f"VIVOS library voice ({name})" if is_vivos else f"Enrolled voice ({name})"
                 rec_speed = self._compute_initial_custom_speed(wav_path, prompt_text)
                 entry = VoiceEntry(
@@ -631,7 +637,7 @@ class ViZipVoiceEngine:
                 self.alias_map[name.lower()] = name
 
         # 2. Scan voice-share-vivos-17 library for any voice not yet in voices/
-        if LIBRARY_DIR.is_dir():
+        if LIBRARY_DIR is not None and LIBRARY_DIR.is_dir():
             for sub in sorted(LIBRARY_DIR.iterdir()):
                 if not sub.is_dir():
                     continue
@@ -706,10 +712,9 @@ class ViZipVoiceEngine:
 
     def _find_library_ref_text(self, name: str) -> str:
         """Auto-discover ref.txt from voice-share-vivos-17 or voices/ if caller didn't pass prompt_text."""
-        candidates = [
-            CUSTOM_VOICES_DIR / f"{name}.txt",
-            LIBRARY_DIR / name / "ref.txt",
-        ]
+        candidates = [CUSTOM_VOICES_DIR / f"{name}.txt"]
+        if LIBRARY_DIR is not None:
+            candidates.append(LIBRARY_DIR / name / "ref.txt")
         for c in candidates:
             if c.is_file():
                 txt = nfc(c.read_text(encoding="utf-8"))

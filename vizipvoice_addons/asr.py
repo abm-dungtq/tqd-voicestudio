@@ -14,6 +14,8 @@ from typing import Callable, List, Optional
 
 import numpy as np
 
+from tqd_voice import paths
+
 ASR_TARGET_SR = 16000
 DEFAULT_ASR_MODEL = "vinai/PhoWhisper-small"
 
@@ -31,7 +33,7 @@ def _get_ct2():
     """Lazy ctranslate2 Whisper backend (batched generate; ~2x pipeline speed).
 
     Model dir from ``VIZIPVOICE_CT2_MODEL`` (default
-    ``D:/TTS/models/phowhisper-small-ct2``); feature extractor and tokenizer
+    ``<TQD_VOICE_HOME>/models/phowhisper-small-ct2``); feature extractor and tokenizer
     still come from ``VIZIPVOICE_ASR_MODEL``."""
     global _ct2, _ct2_tried
     if _ct2_tried:
@@ -49,9 +51,7 @@ def _get_ct2():
         from faster_whisper.tokenizer import Tokenizer as FWTokenizer
         from transformers import WhisperFeatureExtractor, WhisperTokenizer
 
-        model_dir = os.environ.get(
-            "VIZIPVOICE_CT2_MODEL", "D:/TTS/models/phowhisper-small-ct2"
-        )
+        model_dir = str(paths.ct2_asr_dir())
         model_id = os.environ.get("VIZIPVOICE_ASR_MODEL", DEFAULT_ASR_MODEL)
         lang = os.environ.get("VIZIPVOICE_ASR_LANG", "vi")
         cuda = torch.cuda.is_available()

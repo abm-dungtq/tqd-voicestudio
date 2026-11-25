@@ -10,7 +10,7 @@ CLI:
     python scripts/data/guess_region.py validate \
         --voices-dir D:/TTS/voices \
         --audio-dir D:/TTS/models/ViZipvoice/audio \
-        --studio-meta studio_voices_meta.json \
+        --studio-meta vizipvoice_addons/data/studio_voices_meta.json \
         --out D:/TTS/outputs/region_validation.json
 """
 from __future__ import annotations
@@ -207,7 +207,7 @@ def main(argv=None) -> int:
     v = sub.add_parser("validate")
     v.add_argument("--voices-dir", default="D:/TTS/voices")
     v.add_argument("--audio-dir", default="D:/TTS/models/ViZipvoice/audio")
-    v.add_argument("--studio-meta", default="studio_voices_meta.json")
+    v.add_argument("--studio-meta", default="vizipvoice_addons/data/studio_voices_meta.json")
     v.add_argument("--out", required=True)
     v.set_defaults(fn=cmd_validate)
     args = ap.parse_args(argv)
