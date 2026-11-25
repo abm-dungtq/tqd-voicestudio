@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "voices": [
+    "Đinh-Quyết",
+    "Nhã-Uyên",
+    "vi-bac-nam-ducanh-tunhien-v1",
+    "vi-nam-nu-ngocanh-tunhien-v1"
+  ],
+  "texts": [
+    {
+      "id": "news",
+      "text": "Sáng nay, Hà Nội đón đợt không khí lạnh đầu mùa. Nhiệt độ giảm mạnh. Theo trung tâm dự báo khí tượng thủy văn quốc gia, nhiệt độ thấp nhất tại vùng núi phía Bắc có nơi xuống dưới mười hai độ. Người dân nên chú ý giữ ấm. Đặc biệt là trẻ nhỏ và người cao tuổi. Đợt lạnh dự kiến kéo dài đến hết cuối tuần, sau đó nhiệt độ tăng dần trở lại.\n\nTại thành phố Hồ Chí Minh, thời tiết vẫn nắng ráo. Buổi chiều có thể có mưa rào rải rác ở một vài khu vực."
+    },
+    {
+      "id": "product",
+      "text": "Bạn đang tìm một chiếc nồi chiên không dầu? Đây là lựa chọn dành cho bạn. Dung tích năm lít. Công suất một nghìn bảy trăm watt. Lòng nồi chống dính, dễ vệ sinh, có thể cho vào máy rửa bát. Chỉ cần đặt nhiệt độ và thời gian, món ăn sẽ chín đều mà không cần lật. Giá chỉ một triệu hai trăm chín mươi nghìn đồng. Miễn phí vận chuyển toàn quốc. Đặt hàng ngay hôm nay!"
+    },
+    {
+      "id": "story",
+      "text": "Ngày xưa, ở một làng nhỏ ven sông, có hai anh em mồ côi sống nương tựa vào nhau. Người anh siêng năng, sáng nào cũng dậy sớm ra đồng. Người em thì ham chơi. Một hôm, trời đổ mưa to. Nước sông dâng cao, cuốn trôi gần hết hoa màu trong làng. Người em hoảng sợ. Còn người anh vẫn bình tĩnh, gom từng bó lúa còn sót lại, rồi nói: em đừng lo, mình còn đôi tay, còn ruộng đất, sang mùa sau sẽ trồng lại."
+    },
+    {
+      "id": "tutorial",
+      "text": "Để cài đặt ứng dụng, bạn làm theo ba bước. Bước một, mở trang tải về. Bước hai, chọn phiên bản phù hợp với hệ điều hành của máy, rồi bấm nút tải xuống. Bước ba, chạy tệp cài đặt và làm theo hướng dẫn trên màn hình. Xong. Nếu gặp lỗi, hãy khởi động lại máy rồi thử lại một lần nữa. Trong trường hợp vẫn không được, bạn có thể liên hệ bộ phận hỗ trợ qua số điện thoại một chín không không, hoạt động từ tám giờ sáng đến năm giờ chiều các ngày trong tuần."
+    },
+    {
+      "id": "dialogue",
+      "text": "Chào chị. Em muốn hỏi về khóa học tiếng Anh buổi tối. Dạ, bên chị có lớp vào thứ hai, thứ tư và thứ sáu, mỗi buổi chín mươi phút. Học phí bao nhiêu ạ? Ba triệu rưỡi cho một khóa ba tháng. Nếu đăng ký trước ngày mười lăm, em được giảm mười phần trăm. Vâng. Em cảm ơn chị nhiều. Không có gì. Chúc em một ngày tốt lành."
+    },
+    {
+      "id": "essay",
+      "text": "Đọc sách là một thói quen tốt nhưng ngày càng ít người duy trì được trong nhịp sống hiện đại khi điện thoại thông minh và mạng xã hội chiếm gần hết thời gian rảnh rỗi của chúng ta mỗi ngày. Tuy nhiên, chỉ cần dành mười lăm phút trước khi ngủ, bạn đã có thể đọc hết một cuốn sách mỏng trong vòng một tháng. Điều quan trọng không phải là đọc nhanh hay đọc nhiều, mà là đọc đều đặn và biết chọn những cuốn sách thật sự có giá trị với bản thân mình."
+    }
+  ]
+}

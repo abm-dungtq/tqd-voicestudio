@@ -225,9 +225,11 @@ class TtsDataModule:
             else PrecomputedFeatures(),
             return_cuts=self.args.return_cuts,
         )
+        cuts_valid = cuts_valid.to_eager()
         dev_sampler = DynamicBucketingSampler(
             cuts_valid,
             max_duration=self.args.max_duration,
+            num_buckets=min(self.args.num_buckets, max(1, len(cuts_valid))),
             shuffle=False,
         )
         logging.info("About to create valid dataloader")

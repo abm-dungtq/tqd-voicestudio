@@ -199,3 +199,14 @@ cython_debug/
 .dolt/
 *.db
 .beads-credential-key
+
+# Fine-tune recipe working dirs (run_finetune_vi.sh)
+egs/zipvoice/data/
+egs/zipvoice/download/
+egs/zipvoice/exp/
+pronunciation_lexicon.json
+
+# TQD-Voice hygiene
+egs/zipvoice/data_smoke_*/
+.venv/
+plans/**/research/

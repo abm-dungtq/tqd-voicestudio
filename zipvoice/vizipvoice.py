@@ -21,7 +21,7 @@ from zipvoice.utils.feature import VocosFbank
 DEFAULT_REPO_ID = "contextboxai/ViZipvoice"
 DEFAULT_CHECKPOINT_NAME = "latest"
 CHECKPOINT_RE = re.compile(r"^checkpoint-(\d+)\.pt$")
-SENTENCE_SPLIT_PATTERN = re.compile(r"[^.?？。]+(?:[.?？。]+|$)", re.S)
+SENTENCE_SPLIT_PATTERN = re.compile(r"[^.!?…？。！]+(?:[.!?…？。！]+|$)", re.S)
 PUNCTUATION_NO_SPACE_BEFORE = r",.;:!?…%"
 OPENING_QUOTES_AND_BRACKETS = r"\(\[\{«“‘"
 CLOSING_QUOTES_AND_BRACKETS = r"\)\]\}»”’"

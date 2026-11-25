@@ -265,6 +265,22 @@ export VIZIPVOICE_MODAL_SCALEDOWN_WINDOW=5
 export VIZIPVOICE_MODAL_WORKER_TIMEOUT=900
 ```
 
+## MCP server cho agent + Tailscale
+
+Repo có `mcp_server.py` — MCP server chạy stdio, gọi `vizipvoice_openai_server.py` qua
+HTTP. Agent (Claude Desktop, IDE) dùng các tool `list_voices`, `synthesize_speech`,
+`create_voice` và resource `vizipvoice://voices` để tạo voice tiếng Việt.
+
+```bash
+pip install -r requirements-mcp.txt
+export VIZIPVOICE_API_URL=http://127.0.0.1:8001   # hoặc URL tailnet
+export VIZIPVOICE_API_KEY=...                     # khớp key của speech server
+python mcp_server.py
+```
+
+Hướng dẫn đầy đủ (cấu hình client, `tailscale serve`/ACL, xử lý lỗi):
+[docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md).
+
 ## Chạy với model local
 
 Nếu đã tải model từ Hugging Face về thư mục riêng:
@@ -280,6 +296,67 @@ python3 -m zipvoice.bin.infer_vizipvoice \
   --prompt-text "Transcript của prompt." \
   --text "Nội dung cần đọc." \
   --res-wav-path output.wav
+```
+
+## API mở rộng (vizipvoice_openai_server.py)
+
+Server OpenAI-compatible giờ có thêm các endpoint/tham số mới (xem `vizipvoice_addons/`):
+
+- `GET /v1/voices?gender=&region=&kind=&q=` — lọc giọng theo giới tính
+  (`male`/`female`/`nam`/`nữ`), miền (`bac`/`trung`/`nam`/`Bắc`/…), loại
+  (`preset`/`custom`), hoặc tìm chuỗi con trong id/mô tả/alias.
+- `POST /v1/voices` — thêm form field `gender`, `region`, `auto_transcribe`
+  (mặc định bật). Thứ tự lấy transcript: `prompt_text`/`ref_text` → `ref.txt`
+  trong thư viện → ASR (model `VIZIPVOICE_ASR_MODEL`, mặc định
+  `vinai/PhoWhisper-small`). Clip dài > 10 s sẽ được cắt tự động
+  (`select_prompt_segment`) trước khi transcribe. Không có text + ASR lỗi → 400,
+  yêu cầu truyền `prompt_text`. Mỗi voice ghi sidecar `voices/<name>.json`
+  (gender/region/transcript_source/duration/median_f0).
+- `POST /v1/audio/speech` — `response_format` hỗ trợ thêm `mp3`/`opus`/`flac`
+  (cần ffmpeg); `quality_check=true` bật QC bằng ASR: từng span được transcribe
+  lại, tính CER với text đã chuẩn hoá, sinh lại bằng seed 667+ nếu CER vượt
+  `VIZIPVOICE_QC_MAX_CER` (mặc định 0.15), tối đa `VIZIPVOICE_QC_MAX_RETRIES`
+  (mặc định 2) lần; header `X-QC-Max-CER`/`X-QC-Retries`. Đa giọng trong một
+  request bằng tag `[voice=Tên]` / `[giọng=Tên]`, các đoạn nối bằng 250 ms lặng.
+- `POST /v1/audio/speech/timed` — body như `/v1/audio/speech` + `subtitle_format`
+  (`srt`/`vtt`/`both`); trả JSON gồm `audio_base64`, `segments[{start,end,text,voice}]`,
+  `srt`, `vtt`.
+- `GET`/`PUT /v1/lexicon` — từ điển phát âm JSON `{"entries": {...}}`, thay thế
+  nguyên từ khoá, phân biệt hoa thường, tự reload theo mtime. Đường dẫn qua
+  `VIZIPVOICE_LEXICON_PATH`; mẫu ở `pronunciation_lexicon.example.json`.
+
+## Quy trình dữ liệu & fine-tune
+
+Cài phụ thuộc: `pip install -r requirements-data.txt` (datasets + pyarrow tương
+thích numpy<2).
+
+```bash
+# 1) Tải & lọc dataset -> wavs/ + manifest.jsonl + custom_{train,dev}.tsv
+python scripts/data/prepare_tts_dataset.py \
+  --dataset qhuy242/VNAVC --speaker-col speaker_id \
+  --streaming --max-samples 400 --asr-filter \
+  --out-dir D:/TTS/datasets/vnavc_sample --license cc-by-4.0
+
+# 2) Chọn clip 5-10 s tốt nhất mỗi speaker -> candidates.csv
+python scripts/data/select_voice_candidates.py \
+  --manifest D:/TTS/datasets/vnavc_sample/manifest.jsonl \
+  --out-dir D:/TTS/datasets/vnavc_sample/candidates --top 10
+
+# 3) Nghe thử, điền cột region/name/approve=1 trong candidates.csv rồi import
+python scripts/data/import_voices.py \
+  --candidates D:/TTS/datasets/vnavc_sample/candidates/candidates.csv
+# ghi vi-{bac|trung|nam}-{nam|nu}-{name}-tunhien-v1.{wav,txt,json} vào D:/TTS/voices
+```
+
+Fine-tune (TSV từ bước 1; tokenizer `simple`, không cần espeak):
+
+```bash
+cd egs/zipvoice
+train_tsv=D:/TTS/datasets/vnavc_sample/custom_train.tsv \
+dev_tsv=D:/TTS/datasets/vnavc_sample/custom_dev.tsv \
+model_dir=D:/TTS/models/ViZipvoice \
+python=../../.venv/Scripts/python \
+bash run_finetune_vi.sh   # stage 1-6; stage 4 lấy checkpoint từ model_dir
 ```
 
 ## Gợi ý chất lượng

@@ -1,0 +1,3 @@
+# MCP bridge for vizipvoice_openai_server.py (MCP Python SDK v2)
+mcp>=2.3
+httpx>=0.27

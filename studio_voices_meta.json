@@ -1,0 +1,258 @@
+{
+  "default_voice": "Đinh-Quyết",
+  "aliases": {
+    "Minh Đức": "Đinh-Quyết",
+    "minh-duc": "Đinh-Quyết",
+    "Xuân Vĩnh": "Cao-Việt",
+    "Mai Anh": "Nhã-Uyên",
+    "Hương Giang": "Thanh-Vân",
+    "Bình (nam miền Bắc)": "Kiếm-Trọng",
+    "Tuyên (nam miền Bắc)": "MC",
+    "Vinh (nam miền Nam)": "Quang-Minh",
+    "Ngọc (nữ miền Bắc)": "Thanh-Vân",
+    "Ly (nữ miền Bắc)": "Nhã-Uyên",
+    "Đoan (nữ miền Nam)": "Phương-Ngọc"
+  },
+  "voices": {
+    "Đinh-Quyết": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Tử Vi - Kinh Dịch", "Đông y", "Tài chính - Kinh tế"],
+      "description": "Nam · Bắc · Điềm đạm, rõ chữ, chuẩn thuyết minh Tử Vi - Kinh Dịch & Đông y (Alias: Minh Đức)"
+    },
+    "Kiếm-Trọng": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.95,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nam · Bắc · Trầm ấm, chững chạc, hợp giảng giải Đông y & Cổ học phương Đông"
+    },
+    "Cao-Việt": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 1.12,
+      "domains": ["Tử Vi - Kinh Dịch", "Đông y"],
+      "description": "Nam · Bắc · Trầm sâu (baritone 104Hz), uy nghiêm, hợp Kinh Dịch & Triết học"
+    },
+    "Phùng-Thái": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.95,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nam · Bắc · Giọng trầm dày (96Hz), kể chuyện đêm khuya, Tử Vi & Dưỡng sinh Đông y"
+    },
+    "Uy-Thái": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Tử Vi - Kinh Dịch", "Đông y", "Tài chính - Kinh tế"],
+      "description": "Nam · Bắc · Chậm rãi, sâu sắc (113Hz), hợp phân tích chuyên sâu & Cổ học"
+    },
+    "Ngạn-Kể": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 1.0,
+      "domains": ["Tử Vi - Kinh Dịch", "Đông y"],
+      "description": "Nam · Bắc · Phong thái kể chuyện truyền cảm, hợp Tử Vi & Điển tích xưa"
+    },
+    "MC": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 1.08,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nam · Bắc · Phát thanh viên chuẩn mực (101Hz), dứt khoát, hợp Tài chính - Kinh tế & Vĩ mô"
+    },
+    "Quang-Minh": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 1.04,
+      "domains": ["Tài chính - Kinh tế", "Đông y"],
+      "description": "Nam · Bắc · Rõ ràng, chuẩn tin tức thị trường, Chứng khoán & Kinh tế vĩ mô"
+    },
+    "Phát-Tài": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.98,
+      "domains": ["Tài chính - Kinh tế", "Tử Vi - Kinh Dịch"],
+      "description": "Nam · Bắc · Chững chạc, đáng tin cậy, hợp phân tích Đầu tư & Tài chính"
+    },
+    "Nhật-Nam": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nam · Bắc · Trầm ổn (126Hz), hợp bản tin Tài chính ngân hàng & Vĩ mô"
+    },
+    "Thắng-Sơn": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nam · Bắc · Rõ nét, hợp bình luận Kinh tế & Quản trị rủi ro"
+    },
+    "Hòa-Vinh": {
+      "gender": "male",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Tài chính - Kinh tế", "Đông y"],
+      "description": "Nam · Bắc · Điềm tĩnh, hợp giải thích Chính sách & Kiến thức y học"
+    },
+    "Nhã-Uyên": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nữ · Bắc · Dịu dàng, truyền cảm, hợp Dưỡng sinh Đông y & Tử Vi Đẩu Số"
+    },
+    "Hải-Đường": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nữ · Bắc · Trầm ấm, thư thái, hợp Y học cổ truyền & Chăm sóc sức khỏe"
+    },
+    "Bách-Việt": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Tử Vi - Kinh Dịch", "Đông y"],
+      "description": "Nữ · Bắc · Chững chạc, học thuật, hợp Văn hóa phương Đông & Kinh Dịch"
+    },
+    "Thanh-Vân": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Sắc sảo, chuyên nghiệp, hợp Tài chính - Kinh tế & Báo cáo thị trường"
+    },
+    "Tố-Như": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": true,
+      "recommended_speed": 0.98,
+      "domains": ["Tài chính - Kinh tế", "Đông y"],
+      "description": "Nữ · Bắc · Chuẩn mực, mạch lạc, hợp Phân tích vĩ mô & Đầu tư"
+    },
+    "Phương-Ngọc": {
+      "gender": "female",
+      "region": "Nam",
+      "featured": true,
+      "recommended_speed": 0.96,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nữ · Nam · Nhẹ nhàng, gần gũi, hợp kể chuyện Đông y & Đời sống"
+    },
+    "Mỹ-Yến": {
+      "gender": "female",
+      "region": "Nam",
+      "featured": true,
+      "recommended_speed": 0.98,
+      "domains": ["Tài chính - Kinh tế", "Đông y"],
+      "description": "Nữ · Nam · Thanh lịch, rõ ràng, hợp Kinh doanh & Tài chính cá nhân"
+    },
+    "Bá-Vinh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Tài chính - Kinh tế", "Đông y"],
+      "description": "Nữ · Bắc · Giọng trầm (alto), điềm đạm, hợp phân tích chuyên đề"
+    },
+    "Phi-Linh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Đông y", "Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Ấm áp, rõ chữ, hợp thuyết minh Kiến thức & Sức khỏe"
+    },
+    "Thanh-Ngọc": {
+      "gender": "female",
+      "region": "Nam",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Đông y", "Tài chính - Kinh tế"],
+      "description": "Nữ · Nam · Tự nhiên, mượt mà, hợp Giải thích kiến thức & Kinh tế"
+    },
+    "Cát-Anh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Trong trẻo, hợp Bản tin tài chính & Quản trị rủi ro"
+    },
+    "Vy-Anh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Hiện đại, hợp Phân tích tiêu dùng & Thị trường"
+    },
+    "Mai-Linh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Tử Vi - Kinh Dịch", "Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Rõ ràng, hợp thuyết minh Lịch sử & Chính sách"
+    },
+    "Ngọc-Huyền": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Đông y", "Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Nhẹ nhàng, chuẩn mực, hợp Thuyết minh tổng hợp"
+    },
+    "Linh-Anh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Trẻ trung, sáng rõ, hợp Khoa học & Công nghệ"
+    },
+    "Linh-Chi": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Đông y"],
+      "description": "Nữ · Bắc · Tươi sáng, hợp Đời sống & Sức khỏe"
+    },
+    "Tú-Anh": {
+      "gender": "female",
+      "region": "Bắc",
+      "featured": false,
+      "recommended_speed": 1.0,
+      "domains": ["Tài chính - Kinh tế"],
+      "description": "Nữ · Bắc · Gọn chữ, hợp Điểm tin nhanh"
+    },
+    "Ái-Vân": {
+      "gender": "female",
+      "region": "Nam",
+      "featured": false,
+      "recommended_speed": 0.98,
+      "domains": ["Đông y", "Tử Vi - Kinh Dịch"],
+      "description": "Nữ · Nam · Dịu nhẹ, hợp Văn hóa & Nghệ thuật sống"
+    }
+  }
+}

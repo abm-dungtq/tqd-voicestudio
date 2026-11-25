@@ -1,0 +1,18 @@
+# Data-prep toolkit for ViZipVoice TTS data curation (scripts/data/).
+# Pin rule: newest `datasets` release published at least 7 days before
+# 2026-11-24 *that still works with numpy<2* — datasets 5.2.0/5.1.0 (newest in
+# window) require pyarrow>=24 which in turn requires NumPy 2.x, conflicting
+# with soe-vinorm's hard numpy<2.0.0 pin in this venv. datasets 5.0.1
+# (released 2026-07-28) only needs pyarrow>=21, and pyarrow 21 is the last
+# series that tolerates numpy 1.x.
+datasets==5.0.1
+pyarrow==21.0.0
+
+# lhotse feature storage backend used by egs/zipvoice/run_finetune_vi.sh stage 3
+lilcom
+
+# Optional CT2 ASR backend for prepare_tts_dataset.py (VIZIPVOICE_ASR_BACKEND=ct2):
+# ~2-4x the transformers-pipeline throughput. av 19 breaks faster-whisper's
+# decode_audio; 15.x is the newest with cp312 Windows wheels.
+faster-whisper==1.2.1
+av==15.1.0
