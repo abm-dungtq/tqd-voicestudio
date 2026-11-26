@@ -9,22 +9,41 @@ import numpy as np
 Cut = Tuple[int, int]  # (position in the original samples, samples removed)
 
 
+def _soft_limit(y: np.ndarray, ceiling: float, knee: float = 0.5) -> np.ndarray:
+    """Smooth peak limiter: identity below ``knee*ceiling``, tanh-compressed above, never above ``ceiling``."""
+    t = knee * ceiling
+    mag = np.abs(y)
+    over = mag > t
+    out = y.copy()
+    out[over] = np.sign(y[over]) * (t + (ceiling - t) * np.tanh((mag[over] - t) / (ceiling - t)))
+    return out
+
+
 def normalize_loudness(wav: np.ndarray, sr: int, target_lufs: float = -16.0, peak_db: float = -1.0) -> np.ndarray:
-    """Integrated loudness to ``target_lufs`` (BS.1770), then peak-limited to ``peak_db`` dBFS."""
+    """Integrated loudness to ``target_lufs`` (BS.1770) with a soft peak limit at ``peak_db`` dBFS.
+
+    A pure gain would miss the target on peaky material (the peak ceiling wins), so the gain is
+    refined over a few iterations while the soft limiter holds the ceiling.
+    """
     import pyloudnorm
 
     x = np.asarray(wav, dtype=np.float64).reshape(-1)
     if x.size < int(0.4 * sr) or float(np.max(np.abs(x))) < 1e-6:
         return np.asarray(wav, dtype=np.float32)
-    loudness = pyloudnorm.Meter(sr).integrated_loudness(x)
+    meter = pyloudnorm.Meter(sr)
+    loudness = meter.integrated_loudness(x)
     if not np.isfinite(loudness):
         return np.asarray(wav, dtype=np.float32)
-    y = x * (10.0 ** ((target_lufs - loudness) / 20.0))
     ceiling = 10.0 ** (peak_db / 20.0)
-    peak = float(np.max(np.abs(y)))
-    if peak > ceiling:
-        y = y * (ceiling / peak)
-    return y.astype(np.float32)
+    gain_db = target_lufs - loudness
+    y = x
+    for _ in range(6):
+        y = _soft_limit(x * (10.0 ** (gain_db / 20.0)), ceiling)
+        got = meter.integrated_loudness(y)
+        if not np.isfinite(got) or abs(got - target_lufs) < 0.1:
+            break
+        gain_db += target_lufs - got
+    return np.clip(y, -ceiling, ceiling).astype(np.float32)
 
 
 def _frame_rms_db(x: np.ndarray, frame: int) -> np.ndarray:

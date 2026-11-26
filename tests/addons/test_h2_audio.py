@@ -88,3 +88,16 @@ def test_music_loops_fades_and_ducks():
     in_gap = rms_db(out[int(3.0 * SR) : int(3.8 * SR)])
     assert in_gap - under_speech > 9.0
     assert rms_db(out[-int(0.1 * SR) :] - speech[-int(0.1 * SR) :]) < in_gap - 12
+
+
+def test_normalize_peaky_material_still_hits_target_under_ceiling():
+    import pyloudnorm
+
+    rng = np.random.default_rng(0)
+    x = tone(6.0, amp=0.02) + tone(6.0, freq=523, amp=0.015)
+    x[::4000] += 0.8
+    x = np.clip(x, -1, 1).astype(np.float32)
+    y = mixing.normalize_loudness(x, SR, -16.0)
+    lufs = pyloudnorm.Meter(SR).integrated_loudness(y.astype(np.float64))
+    assert abs(lufs + 16.0) < 0.5, lufs
+    assert np.max(np.abs(y)) <= 10 ** (-1 / 20) + 1e-6
