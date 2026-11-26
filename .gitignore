@@ -210,3 +210,9 @@ pronunciation_lexicon.json
 egs/zipvoice/data_smoke_*/
 .venv/
 plans/**/research/
+
+# Playwright E2E local artifacts
+tests/e2e/node_modules/
+tests/e2e/artifacts/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
