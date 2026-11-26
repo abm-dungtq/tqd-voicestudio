@@ -104,3 +104,19 @@ def test_env_file_prepends_pythonpath_to_sys_path(monkeypatch, tmp_path):
     cli._load_env_file(f)
     assert sys.path[:2] == [a, b]
     assert sys.path.count(a) == 1
+
+
+def test_new_subcommands_parse_and_consent_required(monkeypatch, tmp_path, capsys):
+    from tqd_voicestudio import cli
+
+    monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path))
+    p = cli.build_parser()
+    a = p.parse_args(["say", "xin chào", "--normalize", "--trim-silence", "--music", "m1", "--job"])
+    assert a.normalize and a.trim_silence and a.music == "m1" and a.job
+    assert p.parse_args(["jobs", "show", "abc"]).job_id == "abc"
+    assert p.parse_args(["import", "x.md", "-o", "o.txt"]).output == "o.txt"
+    monkeypatch.setattr(cli.daemon, "ensure_server", lambda cfg: (_ for _ in ()).throw(AssertionError("no server")))
+    assert cli.main(["clone", "x", "a.wav"]) == 2
+    assert "--consent" in capsys.readouterr().err
+    assert cli.main(["key", "webhook"]) == 0
+    assert len(capsys.readouterr().out.strip()) >= 32

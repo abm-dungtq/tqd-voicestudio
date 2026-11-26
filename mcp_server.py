@@ -181,12 +181,16 @@ async def create_voice(
     description: str = "",
     denoise: bool = True,
     force: bool = False,
+    consent: bool = False,
 ) -> str:
     """Enroll a new voice from a local reference clip (3-10s, wav/mp3/flac).
 
     `ref_text` is the exact transcript of the clip; when omitted the server
     transcribes it. `gender` is male|female, `region` is bac|trung|nam.
+    `consent` must be true: only clone a voice when its owner agreed.
     """
+    if not consent:
+        raise ValueError("Cần consent=true: chỉ clone giọng khi người đó đồng ý.")
     ref_path = Path(reference_audio_path).expanduser()
     if not ref_path.is_file():
         raise ValueError(f"reference audio not found: {ref_path}")
@@ -200,6 +204,7 @@ async def create_voice(
         "description": description,
         "denoise": "true" if denoise else "false",
         "force": "true" if force else "false",
+        "consent": "true",
     }
     if ref_text is not None:
         form["ref_text"] = ref_text
@@ -216,6 +221,53 @@ async def create_voice(
         data=form,
     )
     return json.dumps({"status": "success", "voice": resp.json()}, ensure_ascii=False)
+
+
+@mcp.tool()
+async def create_job(
+    text: str,
+    voice_id: Optional[str] = None,
+    response_format: str = "wav",
+    speed: Optional[float] = None,
+    normalize: bool = False,
+    trim_silence: bool = False,
+    music_id: Optional[str] = None,
+    webhook_url: Optional[str] = None,
+) -> str:
+    """Submit a long text as a background job; poll with job_status. Returns {id, status}."""
+    if not text.strip():
+        raise ValueError("text must not be empty")
+    payload: dict[str, Any] = {
+        "input": text,
+        "voice": voice_id or config.load().default_voice,
+        "response_format": response_format,
+        "sample_rate": 48000,
+        "normalize": normalize,
+        "trim_silence": trim_silence,
+    }
+    if speed is not None:
+        payload["speed"] = speed
+    if music_id:
+        payload["music"] = {"id": music_id}
+    if webhook_url:
+        payload["webhook_url"] = webhook_url
+    resp = await _request("POST", "/v1/jobs", json=payload)
+    return json.dumps(resp.json(), ensure_ascii=False)
+
+
+@mcp.tool()
+async def job_status(job_id: str, save_audio: bool = False) -> str:
+    """Status of a job (progress, urls). With save_audio=true and a finished job, also saves the audio file."""
+    resp = await _request("GET", f"/v1/jobs/{job_id}")
+    info = resp.json()
+    if save_audio and info.get("status") == "done":
+        audio = await _request("GET", info["audio_url"])
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        ext = "wav" if audio.headers.get("content-type", "").endswith("wav") else "bin"
+        out_path = OUTPUT_DIR / f"job-{job_id}.{ext}"
+        out_path.write_bytes(audio.content)
+        info["path"] = str(out_path)
+    return json.dumps(info, ensure_ascii=False)
 
 
 @mcp.resource("vizipvoice://voices", name="voices", mime_type="application/json")

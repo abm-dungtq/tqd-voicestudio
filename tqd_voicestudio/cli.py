@@ -6,6 +6,7 @@ import argparse
 import datetime
 import json
 import os
+import time
 import sys
 from pathlib import Path
 
@@ -59,20 +60,54 @@ def _read_text(args) -> str:
     return args.text
 
 
-def _cmd_say(args) -> int:
-    import httpx
-
-    cfg = config.load()
-    text = _read_text(args)
-    base = daemon.ensure_server(cfg)
+def _say_body(args, cfg) -> dict:
     body = {
-        "input": text,
+        "input": _read_text(args),
         "voice": args.voice or cfg.default_voice,
         "response_format": args.format,
     }
     if args.speed is not None:
         body["speed"] = args.speed
-    resp = httpx.post(f"{base}/v1/audio/speech", json=body, timeout=None)
+    if args.normalize:
+        body["normalize"] = True
+    if args.trim_silence:
+        body["trim_silence"] = True
+    if args.music:
+        body["music"] = {"id": args.music}
+    return body
+
+
+def _poll_job(httpx, base: str, jid: str) -> dict:
+    last = ""
+    while True:
+        info = httpx.get(f"{base}/v1/jobs/{jid}", timeout=60).json()
+        line = f"job {jid}: {info['status']} {info['segments_done']}/{info['segments_total']} ({info['progress']:.0%})"
+        if line != last:
+            print(line, file=sys.stderr)
+            last = line
+        if info["status"] in ("done", "failed", "canceled"):
+            return info
+        time.sleep(1.0)
+
+
+def _cmd_say(args) -> int:
+    import httpx
+
+    cfg = config.load()
+    body = _say_body(args, cfg)
+    base = daemon.ensure_server(cfg)
+    if args.job:
+        resp = httpx.post(f"{base}/v1/jobs", json=body, timeout=None)
+        if resp.status_code != 202:
+            print(_error_detail(resp), file=sys.stderr)
+            return 1
+        info = _poll_job(httpx, base, resp.json()["id"])
+        if info["status"] != "done":
+            print(info.get("error") or f"job {info['status']}", file=sys.stderr)
+            return 1
+        resp = httpx.get(f"{base}{info['audio_url']}", timeout=None)
+    else:
+        resp = httpx.post(f"{base}/v1/audio/speech", json=body, timeout=None)
     if resp.status_code != 200:
         print(_error_detail(resp), file=sys.stderr)
         return 1
@@ -90,10 +125,13 @@ def _cmd_say(args) -> int:
 def _cmd_clone(args) -> int:
     import httpx
 
+    if not args.consent:
+        print("Cần --consent: chỉ clone giọng khi người đó đồng ý.", file=sys.stderr)
+        return 2
     cfg = config.load()
     base = daemon.ensure_server(cfg)
     audio = Path(args.audio)
-    data = {"name": args.name, "force": "true" if args.force else "false"}
+    data = {"name": args.name, "force": "true" if args.force else "false", "consent": "true"}
     if args.text:
         data["prompt_text"] = args.text
     if args.gender:
@@ -139,6 +177,69 @@ def _cmd_voices(args) -> int:
     for r in rows:
         print("  ".join(r[i].ljust(widths[i]) for i in range(len(cols))))
     return 0
+
+
+def _cmd_jobs(args) -> int:
+    import httpx
+
+    cfg = config.load()
+    base = daemon.ensure_server(cfg)
+    action = args.action or "list"
+    if action == "list":
+        resp = httpx.get(f"{base}/v1/jobs", timeout=60)
+    elif action in ("show", "cancel"):
+        if not args.job_id:
+            print(f"jobs {action} cần JOB_ID", file=sys.stderr)
+            return 2
+        if action == "show":
+            resp = httpx.get(f"{base}/v1/jobs/{args.job_id}", timeout=60)
+        else:
+            resp = httpx.post(f"{base}/v1/jobs/{args.job_id}/cancel", timeout=60)
+    else:
+        print("action phải là list, show hoặc cancel", file=sys.stderr)
+        return 2
+    if resp.status_code != 200:
+        print(_error_detail(resp), file=sys.stderr)
+        return 1
+    payload = resp.json()
+    if action == "list":
+        for j in payload["data"]:
+            print(f"{j['id']}  {j['status']:<9} {j['segments_done']}/{j['segments_total']}")
+        return 0
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_import(args) -> int:
+    import httpx
+
+    cfg = config.load()
+    base = daemon.ensure_server(cfg)
+    source = args.source
+    if source.lower().startswith(("http://", "https://")):
+        resp = httpx.post(f"{base}/v1/import", json={"url": source}, timeout=120)
+    else:
+        path = Path(source)
+        with open(path, "rb") as f:
+            resp = httpx.post(f"{base}/v1/import", files={"file": (path.name, f)}, timeout=120)
+    if resp.status_code != 200:
+        print(_error_detail(resp), file=sys.stderr)
+        return 1
+    data = resp.json()
+    if args.output:
+        Path(args.output).write_text(data["text"], encoding="utf-8")
+        print(Path(args.output).resolve())
+        print(f"{data['title']} ({data['words']} từ)", file=sys.stderr)
+    else:
+        print(data["text"])
+    return 0
+
+
+def _cmd_key(args) -> int:
+    if args.which == "webhook":
+        print(config.ensure_webhook_secret())
+        return 0
+    return 2
 
 
 def _cmd_stop(args) -> int:
@@ -189,6 +290,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-o", "--output")
     s.add_argument("--format", choices=["wav", "mp3", "flac", "opus"], default="wav")
     s.add_argument("--speed", type=float)
+    s.add_argument("--normalize", action="store_true", help="chuẩn hóa âm lượng về -16 LUFS")
+    s.add_argument("--trim-silence", action="store_true", help="rút ngắn khoảng lặng dài hơn 0,6 giây")
+    s.add_argument("--music", metavar="ID", help="id nhạc nền đã tải lên (POST /v1/music)")
+    s.add_argument("--job", action="store_true", help="gửi thành job nền và theo dõi tiến độ")
     s.set_defaults(fn=_cmd_say)
 
     s = sub.add_parser("clone", help="enroll a voice from a reference clip")
@@ -198,6 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--gender", choices=["male", "female"])
     s.add_argument("--region", choices=["bac", "trung", "nam"])
     s.add_argument("--force", action="store_true")
+    s.add_argument("--consent", action="store_true", help="xác nhận người có giọng đã đồng ý cho clone")
     s.set_defaults(fn=_cmd_clone)
 
     s = sub.add_parser("voices", help="list voices")
@@ -224,6 +330,20 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("mcp-config", help="print MCP client configuration")
     s.add_argument("--client", choices=["claude-desktop", "cursor", "claude-code"], default="claude-desktop")
     s.set_defaults(fn=_cmd_mcp_config)
+
+    s = sub.add_parser("jobs", help="liệt kê / xem / hủy job")
+    s.add_argument("action", nargs="?", choices=["list", "show", "cancel"], default="list")
+    s.add_argument("job_id", nargs="?")
+    s.set_defaults(fn=_cmd_jobs)
+
+    s = sub.add_parser("import", help="nhập văn bản từ file (.txt .md .docx .pdf) hoặc URL")
+    s.add_argument("source", metavar="FILE_OR_URL")
+    s.add_argument("-o", "--output", help="ghi văn bản ra file")
+    s.set_defaults(fn=_cmd_import)
+
+    s = sub.add_parser("key", help="khóa bí mật")
+    s.add_argument("which", choices=["webhook"], help="webhook: in secret ký webhook")
+    s.set_defaults(fn=_cmd_key)
 
     s = sub.add_parser("stop", help="stop the background server")
     s.set_defaults(fn=_cmd_stop)
