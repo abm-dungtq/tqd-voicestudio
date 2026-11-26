@@ -7,8 +7,8 @@ DRY_RUN=0
 
 COMMANDS=(
   "uv tool install --python 3.12 --torch-backend=auto \"git+https://github.com/abm-dungtq/tqd-voice@${REF}\""
-  "tqd-voice doctor"
-  "tqd-voice install"
+  "\"\$(uv tool dir --bin)/tqd-voice\" doctor"
+  "\"\$(uv tool dir --bin)/tqd-voice\" install"
 )
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -22,5 +22,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@${REF}"
-tqd-voice doctor || echo "doctor báo lỗi; 'tqd-voice install' sẽ tự dừng nếu lỗi chặn cài đặt." >&2
-tqd-voice install
+uv tool update-shell || true
+EXE="$(uv tool dir --bin)/tqd-voice"
+"$EXE" doctor || echo "doctor báo lỗi; 'tqd-voice install' sẽ tự dừng nếu lỗi chặn cài đặt." >&2
+"$EXE" install

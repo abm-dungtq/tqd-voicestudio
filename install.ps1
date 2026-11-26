@@ -5,8 +5,8 @@
 
 $commands = @(
     "uv tool install --python 3.12 --torch-backend=auto `"git+https://github.com/abm-dungtq/tqd-voice@$Ref`"",
-    "tqd-voice doctor",
-    "tqd-voice install"
+    "& (Join-Path (uv tool dir --bin) 'tqd-voice.exe') doctor",
+    "& (Join-Path (uv tool dir --bin) 'tqd-voice.exe') install"
 )
 
 if ($DryRun) {
@@ -22,8 +22,12 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@$Ref"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-tqd-voice doctor
+uv tool update-shell | Out-Null
+
+$exe = Join-Path (uv tool dir --bin) "tqd-voice.exe"
+
+& $exe doctor
 if ($LASTEXITCODE -ne 0) { Write-Warning "doctor báo lỗi; 'tqd-voice install' sẽ tự dừng nếu lỗi chặn cài đặt." }
 
-tqd-voice install
+& $exe install
 exit $LASTEXITCODE

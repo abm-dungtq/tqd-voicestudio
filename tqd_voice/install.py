@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
-from tqd_voice import config, daemon, doctor, paths
+from tqd_voice import config, daemon, doctor, mcp_config, paths
 
 MODEL_REPO = "contextboxai/ViZipvoice"
 MODEL_REVISION = "7903dcb99d5a17c2e59a0ef5f7db32de4bed357b"
@@ -65,4 +65,9 @@ def run(args) -> int:
             daemon.stop_server(rec)
 
     print('Xong. Thử: tqd-voice say "Xin chào"')
+    text, note = mcp_config.render("claude-desktop", mcp_config.resolve_exe())
+    print("Cấu hình MCP (Claude Desktop):")
+    print(text)
+    if note:
+        print(note)
     return 0

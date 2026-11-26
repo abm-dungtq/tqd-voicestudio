@@ -127,6 +127,19 @@ def _cmd_stop(args) -> int:
     return 0
 
 
+def _cmd_mcp(args) -> int:
+    import mcp_server
+
+    mcp_server.main()
+    return 0
+
+
+def _cmd_mcp_config(args) -> int:
+    from tqd_voice import mcp_config
+
+    return mcp_config.run(args)
+
+
 def _cmd_doctor(args) -> int:
     from tqd_voice import doctor
 
@@ -180,6 +193,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-asr", action="store_true")
     s.add_argument("--no-smoke", action="store_true")
     s.set_defaults(fn=_cmd_install)
+
+    s = sub.add_parser("mcp", help="run the MCP stdio server (uses the local daemon)")
+    s.set_defaults(fn=_cmd_mcp)
+
+    s = sub.add_parser("mcp-config", help="print MCP client configuration")
+    s.add_argument("--client", choices=["claude-desktop", "cursor", "claude-code"], default="claude-desktop")
+    s.set_defaults(fn=_cmd_mcp_config)
 
     s = sub.add_parser("stop", help="stop the background server")
     s.set_defaults(fn=_cmd_stop)
