@@ -20,7 +20,27 @@ def _error_detail(resp) -> str:
         return resp.text
 
 
+def _load_env_file(path) -> None:
+    with open(path, encoding="utf-8") as f:
+        os.environ.update(json.load(f))
+    entries = [e for e in os.environ.get("PYTHONPATH", "").split(os.pathsep) if e]
+    new = list(dict.fromkeys(e for e in entries if e not in sys.path))
+    sys.path[:0] = new
+
+
+def _redirect_output(path) -> None:
+    log = open(path, "ab", buffering=0)
+    for fd in (1, 2):
+        os.dup2(log.fileno(), fd)
+    sys.stdout = open(1, "w", encoding="utf-8", buffering=1, closefd=False)
+    sys.stderr = open(2, "w", encoding="utf-8", buffering=1, closefd=False)
+
+
 def _cmd_serve(args) -> int:
+    if args.env_file:
+        _load_env_file(args.env_file)
+    if args.log:
+        _redirect_output(args.log)
     cfg = config.load()
     if args.port:
         cfg.port = args.port
@@ -158,6 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("serve", help="run the local server in the foreground")
     s.add_argument("--port", type=int)
+    s.add_argument("--env-file", help=argparse.SUPPRESS)
+    s.add_argument("--log", help=argparse.SUPPRESS)
     s.set_defaults(fn=_cmd_serve)
 
     s = sub.add_parser("say", help="synthesize speech to a file")

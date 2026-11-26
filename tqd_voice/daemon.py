@@ -38,6 +38,45 @@ def _log_tail(lines: int = 20) -> str:
         return ""
 
 
+_IS_WINDOWS = os.name == "nt"
+
+
+def _spawn_posix(cmd: list[str], env: dict) -> int:
+    proc = subprocess.Popen(
+        cmd, env=env, cwd=str(paths.home()), start_new_session=True,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return proc.pid
+
+
+def _spawn_detached(cmd: list[str], env: dict) -> int:
+    proc = subprocess.Popen(
+        cmd, env=env, cwd=str(paths.home()),
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return proc.pid
+
+
+def _spawn_wmi(cmd: list[str], cwd: str) -> int:
+    def quote(text: str) -> str:
+        return text.replace("'", "''")
+
+    script = (
+        "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
+        f"-Arguments @{{CommandLine='{quote(subprocess.list2cmdline(cmd))}'; CurrentDirectory='{quote(cwd)}'}}; "
+        "if ($r.ReturnValue -ne 0) { exit 1 }; $r.ProcessId"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"WMI spawn failed: {result.stderr.strip() or result.stdout.strip()}")
+    return int(result.stdout.strip().splitlines()[-1])
+
+
 def ensure_server(cfg: Config, wait_s: float = 300) -> str:
     info = health(cfg)
     if info is not None and info.get("status") == "ok":
@@ -48,22 +87,27 @@ def ensure_server(cfg: Config, wait_s: float = 300) -> str:
     if info is None or info.get("status") != "loading":
         paths.home().mkdir(parents=True, exist_ok=True)
         paths.logs_dir().mkdir(parents=True, exist_ok=True)
-        env = os.environ | config.to_env(cfg)
-        kwargs: dict = {}
-        if os.name == "nt":
-            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        env = dict(os.environ | config.to_env(cfg))
+        env_file = paths.home() / "server.env.json"
+        env_file.write_text(json.dumps(env, ensure_ascii=False), encoding="utf-8")
+        cmd = [
+            sys.executable, "-m", "tqd_voice", "serve",
+            "--env-file", str(env_file),
+            "--log", str(paths.logs_dir() / "server.log"),
+        ]
+        if _IS_WINDOWS:
+            try:
+                pid = _spawn_wmi(cmd, str(paths.home()))
+                how = "wmi"
+            except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as exc:
+                reason = str(exc).strip().splitlines()[0][:120] if str(exc).strip() else type(exc).__name__
+                pid = _spawn_detached(cmd, env)
+                how = f"detached (WMI failed: {reason}); server may stop when the MCP session ends"
         else:
-            kwargs["start_new_session"] = True
-        with open(paths.logs_dir() / "server.log", "ab") as log:
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "tqd_voice", "serve"],
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                **kwargs,
-            )
-        (paths.home() / "server.pid").write_text(str(proc.pid), encoding="utf-8")
+            pid = _spawn_posix(cmd, env)
+            how = "posix"
+        print(f"spawn: {how}", file=sys.stderr)
+        (paths.home() / "server.pid").write_text(str(pid), encoding="utf-8")
         print("Đang khởi động TQD-Voice server (lần đầu có thể mất 1–2 phút)...", file=sys.stderr)
 
     deadline = time.monotonic() + wait_s

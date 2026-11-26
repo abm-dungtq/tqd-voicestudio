@@ -97,6 +97,26 @@ và pre-warm model trước khi nhận request; hãy đợi log `ViZipVoiceEngin
 
 ## 3. Chạy MCP bridge
 
+### Cách nhanh: `tqd-voice mcp` (daemon cục bộ)
+
+Sau khi cài bằng `uv tool install` và chạy `tqd-voice install`, MCP client chỉ cần spawn
+`tqd-voice mcp`. Ở lần gọi tool đầu tiên, bridge tự bật (hoặc dùng lại) speech server nền
+tại `127.0.0.1:8765` (đọc `config.toml` trong `TQD_VOICE_HOME`), nên các phiên sau không
+phải nạp lại model. Lần đầu có thể mất 1–2 phút. Trên Windows, daemon được tạo qua WMI để
+không bị Job Object của MCP client kill khi đóng phiên.
+
+```bash
+tqd-voice mcp-config                       # JSON cho Claude Desktop (mặc định)
+tqd-voice mcp-config --client cursor       # JSON cho Cursor
+tqd-voice mcp-config --client claude-code  # lệnh `claude mcp add ...`
+tqd-voice stop                             # tắt daemon
+```
+
+Đặt `VIZIPVOICE_API_URL` để bỏ qua daemon và dùng một speech server có sẵn (ví dụ
+`http://127.0.0.1:8001` hoặc URL Tailscale ở mục 4).
+
+### Chạy trực tiếp `mcp_server.py`
+
 `mcp_server.py` chạy bằng stdio — MCP client sẽ tự spawn process này.
 
 ```bash
@@ -108,17 +128,17 @@ python mcp_server.py
 
 | Biến | Mặc định | Ý nghĩa |
 |------|----------|---------|
-| `VIZIPVOICE_API_URL` | `http://127.0.0.1:8001` | Base URL của speech server |
+| `VIZIPVOICE_API_URL` | không đặt = daemon `127.0.0.1:8765` | Base URL của speech server |
 | `VIZIPVOICE_API_KEY` | rỗng | Bearer token; rỗng thì không gửi header `Authorization` |
-| `VIZIPVOICE_OUTPUT_DIR` | `<tmp>/vizipvoice-mcp` | Nơi ghi file WAV/PCM trả về |
+| `VIZIPVOICE_OUTPUT_DIR` | `<TQD_VOICE_HOME>/outputs/mcp` | Nơi ghi file audio trả về |
 
 ### Tool và resource
 
 | Tên | Loại | Tham số chính |
 |-----|------|---------------|
 | `list_voices` | tool | — (trả JSON danh sách voice, alias, `recommended_speed`) |
-| `synthesize_speech` | tool | `text`, `voice_id`, `speed` (0.5–2.0), `style`, `sample_rate` (8000/16000/24000/48000), `response_format` (`wav`/`pcm`), `return_base64` |
-| `create_voice` | tool | `name`, `reference_audio_path` (file local trên máy chạy MCP), `ref_text` (transcript đúng), `description`, `denoise`, `force` |
+| `synthesize_speech` | tool | `text`, `voice_id`, `speed` (0.5–2.0), `style`, `sample_rate` (8000/16000/24000/48000), `response_format` (`wav`/`pcm`/`mp3`/`flac`/`opus`), `return_base64`; `voice_id` bỏ trống = giọng mặc định trong `config.toml` |
+| `create_voice` | tool | `name`, `reference_audio_path` (file local trên máy chạy MCP), `ref_text` (tùy chọn; bỏ trống thì server tự nhận dạng), `gender` (`male`/`female`), `region` (`bac`/`trung`/`nam`), `description`, `denoise`, `force` |
 | `vizipvoice://voices` | resource | — (catalog voice dạng JSON) |
 
 `synthesize_speech` trả JSON: `path`, `size_bytes`, `duration_seconds`, `voice`,
