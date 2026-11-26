@@ -2,9 +2,15 @@
 
 Tài liệu này mô tả cách bật speech server của ViZipVoice và nối nó vào agent qua MCP
 (Model Context Protocol), kể cả khi máy GPU và máy agent nằm ở hai nơi khác nhau
-trong cùng một tailnet của Tailscale.
+trong cùng một tailnet của Tailscale. Hướng dẫn mở server cho máy khác (API key,
+tường lửa, kiểm tra) nằm ở [REMOTE.md](REMOTE.md) — tài liệu này tập trung phần MCP.
 
 ## Kiến trúc
+
+Có hai cách nối MCP:
+
+**A. stdio cục bộ** — MCP client spawn `tqd-voicestudio mcp` (hoặc `python mcp_server.py`)
+trên máy agent; bridge gọi speech server qua HTTP:
 
 ```text
 MCP client (Claude Desktop / IDE agent)
@@ -13,13 +19,30 @@ MCP client (Claude Desktop / IDE agent)
 mcp_server.py  (chạy trên máy agent)
         │  HTTP + Bearer token
         ▼
-vizipvoice_openai_server.py  (máy GPU, port 8001)
+vizipvoice_openai_server.py  (máy GPU)
         └── Tailscale chỉ thay đường mạng giữa hai máy, không đổi API
 ```
 
+**B. Streamable HTTP tại `/mcp`** — speech server tự mount MCP endpoint ngay bên trong
+(không cần process bridge, không cần cài gì trên máy agent):
+
+```text
+MCP client (máy khác trong tailnet)
+        │  MCP Streamable HTTP, Authorization: Bearer <API key>
+        ▼
+http://<máy GPU>:8765/mcp   (cùng process với speech server)
+```
+
+Ở chế độ B, audio được trả **inline** dưới dạng MCP `AudioContent` (base64) khi file
+≤ 8 MB thay vì ghi ra đĩa — vì client ở máy khác không đọc được đường dẫn local.
+`create_voice` cũng khác: qua HTTP không dùng được `reference_audio_path`, phải gửi
+`audio_base64` + `filename` (tối đa 25 MB). In cấu hình sẵn cho client bằng
+`tqd-voicestudio mcp-config --remote http://100.x.y.z:8765`.
+
 - `vizipvoice_openai_server.py`: OpenAI-compatible API, expose `/health`, `/v1/models`,
-  `/v1/voices`, `/v1/audio/speech`.
-- `mcp_server.py`: MCP server stdio, expose 3 tool + 1 resource, gọi API ở trên.
+  `/v1/voices`, `/v1/audio/speech`, `/v1/jobs`..., đồng thời mount MCP tại `/mcp`.
+- `mcp_server.py`: cùng một bộ tool, phục vụ qua stdio (`tqd-voicestudio mcp`) hoặc
+  Streamable HTTP (mount trong speech server).
 - Tailscale: dùng IP tailnet hoặc `tailscale serve` để máy agent gọi được máy GPU.
 
 ## 1. Cài đặt
@@ -138,14 +161,56 @@ python mcp_server.py
 |-----|------|---------------|
 | `list_voices` | tool | — (trả JSON danh sách voice, alias, `recommended_speed`) |
 | `synthesize_speech` | tool | `text`, `voice_id`, `speed` (0.5–2.0), `style`, `sample_rate` (8000/16000/24000/48000), `response_format` (`wav`/`pcm`/`mp3`/`flac`/`opus`), `return_base64`; `voice_id` bỏ trống = giọng mặc định trong `config.toml` |
-| `create_voice` | tool | `name`, `reference_audio_path` (file local trên máy chạy MCP), `ref_text` (tùy chọn; bỏ trống thì server tự nhận dạng), `gender` (`male`/`female`), `region` (`bac`/`trung`/`nam`), `description`, `denoise`, `force` |
+| `create_voice` | tool | `name`, `reference_audio_path` (stdio: file local trên máy chạy MCP) **hoặc** `audio_base64` + `filename` (bắt buộc khi qua HTTP, tối đa 25 MB), `ref_text` (tùy chọn; bỏ trống thì server tự nhận dạng), `gender`, `region`, `description`, `denoise`, `force` |
+| `create_job` | tool | `text`, `voice_id`, `response_format`, `speed`, `normalize`, `trim_silence`, `music_id`, `webhook_url` — gửi văn bản dài thành job nền, trả `{"id", "status"}` |
+| `job_status` | tool | `job_id`, `save_audio` — trạng thái job (progress, url); `save_audio=true` (chỉ stdio) tải file về `outputs/mcp` khi job xong |
 | `vizipvoice://voices` | resource | — (catalog voice dạng JSON) |
 
 `synthesize_speech` trả JSON: `path`, `size_bytes`, `duration_seconds`, `voice`,
-`format`, `sample_rate`; thêm `audio_base64` nếu `return_base64=true`.
+`format`, `sample_rate`; thêm `audio_base64` nếu `return_base64=true`. Khi chạy trong
+speech server (Streamable HTTP tại `/mcp`), tool không ghi file mà trả audio inline
+dạng MCP `AudioContent` cho file ≤ 8 MB — client máy khác nghe/lưu trực tiếp.
 `create_voice` enroll voice từ clip 3–10 giây, transcript phải khớp audio; file được lưu
 vào `voices/` dưới ROOT của server (`<thư mục cha của repo>/voices/`) và tự nạp lại ở lần
-khởi động sau.
+khởi động sau. `create_job`/`job_status` bọc API `/v1/jobs` — xem vòng đời job, webhook
+và phụ đề ở [TQD_VOICESTUDIO.md](TQD_VOICESTUDIO.md).
+
+### MCP qua Streamable HTTP (remote)
+
+Speech server mount sẵn MCP endpoint tại `/mcp` (cùng port với REST API). Khi server có
+API key thì `/mcp` cũng bắt buộc `Authorization: Bearer <key>` như mọi route `/v1/*`.
+Không cần cài Python/bridge trên máy agent — chỉ cần client hỗ trợ MCP Streamable HTTP
+(Claude Code, Cursor bản mới...). In cấu hình mẫu:
+
+```bash
+tqd-voicestudio mcp-config --remote http://100.x.y.z:8765            # key để dạng <KEY>, tự thay sau
+tqd-voicestudio mcp-config --remote http://100.x.y.z:8765 --show-key  # nhúng key thật từ config cục bộ
+tqd-voicestudio mcp-config --remote http://100.x.y.z:8765 --key-env TQD_KEY   # đọc key từ biến môi trường lúc chạy
+```
+
+`mcp-config --remote` in ra ba cách: lệnh `claude mcp add --transport http` cho Claude Code,
+JSON cho Cursor (`~/.cursor/mcp.json`), và cầu nối stdio cho Claude Desktop. Cấu hình Cursor
+tương đương viết tay:
+
+```json
+{
+  "mcpServers": {
+    "tqd-voicestudio": {
+      "url": "http://100.x.y.z:8765/mcp",
+      "headers": {"Authorization": "Bearer <KEY>"}
+    }
+  }
+}
+```
+
+Client không hỗ trợ HTTP thì dùng cầu nối stdio: spawn `tqd-voicestudio mcp` (hoặc
+`python mcp_server.py`) với env `VIZIPVOICE_API_URL=http://100.x.y.z:8765` và
+`VIZIPVOICE_API_KEY=<KEY>` — tool vẫn gọi đúng server từ xa qua REST, audio ghi ra file
+trên máy agent.
+
+Điều kiện: server phải nghe trên interface tailnet (`host` trong `config.toml`) và đã có
+API key — xem đầy đủ các bước ở [REMOTE.md](REMOTE.md). Không nên đưa `/mcp` ra Internet
+công cộng.
 
 ## 4. Tailscale
 

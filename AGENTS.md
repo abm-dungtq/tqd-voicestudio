@@ -8,7 +8,7 @@ All data directories are path-configurable via `tqd_voicestudio/paths.py`: `TQD_
 Production on this box (port 8001) runs from `D:\TTS\ViZipvoice` via `D:\TTS\start-api.cmd`,
 which keeps the `D:\TTS` paths through env vars (`VIZIPVOICE_MODEL_DIR`, `VIZIPVOICE_VOICES_DIR`,
 `VIZIPVOICE_CT2_MODEL`, `VIZIPVOICE_LIBRARY_DIR`, `TQD_CHUNKER=legacy`). Develop in the
-worktree `D:\TTS\tqd-voice` (branch `tqd/v0.1`); never edit `D:\TTS\ViZipvoice`.
+worktree `D:\TTS\tqd-voice` (branch `tqd/v0.3`); never edit `D:\TTS\ViZipvoice`.
 
 ## macOS support
 
@@ -17,7 +17,7 @@ sets `PYTORCH_ENABLE_MPS_FALLBACK=1` before torch ops and keeps fp16 off (autoca
 no-op cpu context). doctor on Darwin recommends mps on Apple Silicon (experimental; fall back to
 `device = "cpu"` in config.toml if MPS errors) and never gives CUDA/NVIDIA advice. An explicit
 `VIZIPVOICE_DEVICE` env var overrides doctor's device recommendation (used by CI to force cpu).
-CI lives in `.github/workflows/ci.yml` (unit on ubuntu; smoke matrix ubuntu/windows/macos-14).
+CI lives in `.github/workflows/ci.yml` (unit on ubuntu; smoke matrix ubuntu/windows/macos-15).
 
 ## Python env
 
@@ -43,8 +43,28 @@ PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/addons tests/tts_service t
 ```
 
 `tests/addons/` covers the pure helpers in `vizipvoice_addons/` + data scripts.
+`tests/tqd/` covers the CLI/packaging layer: `test_cli.py`, `test_config.py`, `test_doctor.py`,
+`test_paths.py`, `test_install_extras.py`, `test_mcp_server.py` (incl. HTTP mode + inline
+AudioContent), `test_h2_server.py` (jobs/history/ratings/music/import/cache against a real
+server instance), `test_h2_jobs.py` (job manager, resume, webhook HMAC), `test_h3_remote.py`
+(API key enforcement, `/mcp` Streamable HTTP).
 Note: `tests/tts_service/test_models.py::test_generation_ranges_match_public_api_limits`
 is a known pre-existing failure unrelated to the addons.
+
+### Web UI e2e (Playwright)
+
+`tests/e2e/` is a Node project testing the web UI against `fake_server.py` (no model needed):
+
+```bash
+cd tests/e2e
+npm ci            # first time
+npx playwright install chromium   # first time
+npx playwright test
+```
+
+`playwright.config.js` spawns `fake_server.py` on port 8013 via the shared venv python;
+`real_model_check.js` is the optional real-model smoke. Artifacts land in
+`tests/e2e/test-results/`.
 
 ## Run the API server (dev)
 

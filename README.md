@@ -5,24 +5,37 @@ Tác giả: DũngTQ - 0976202028
 **Chỉ dùng phi thương mại** (giấy phép PolyForm Noncommercial 1.0.0, xem `LICENSE` và `NOTICE`).
 
 TQD-VoiceStudio là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, chạy hoàn toàn trên máy
-bạn, xây trên ViZipVoice (model `contextboxai/ViZipvoice`). Có sẵn 30 giọng, server cục bộ kiểu
-OpenAI và MCP cho agent.
+bạn, xây trên ViZipVoice (model `contextboxai/ViZipvoice`). Có sẵn 30 giọng (thêm gói 22 giọng
+VIVOS nếu muốn), server cục bộ kiểu OpenAI, giao diện web, MCP cho agent.
 
-**Yêu cầu:** Windows, Linux hoặc macOS; GPU NVIDIA từ 6 GB là tốt nhất; không có GPU vẫn chạy được
-nhưng chậm; cần khoảng 3 GB ổ đĩa.
+Tính năng chính:
+
+- Đọc văn bản dài thành file âm thanh; tag `[pause:N]` để ngắt nghỉ, `[voice=Tên]` để đổi giọng
+  giữa chừng, kịch bản nhiều vai (`Tên vai: lời`) với cast riêng.
+- Clone giọng từ một đoạn thu 3–10 giây (bắt buộc xác nhận người nói đồng ý).
+- Job nền cho văn bản dài, tiếp tục được sau khi khởi động lại server, webhook ký HMAC khi xong.
+- Lịch sử + cache kết quả, chấm điểm từng đoạn để cải tiến.
+- Chuẩn hóa âm lượng −16 LUFS, rút ngắn khoảng lặng, trộn nhạc nền có ducking.
+- Nhập văn bản từ file `.txt`/`.md`/`.docx`/`.pdf` hoặc URL (cài thêm extra `[import]`).
+- Web UI tại `http://127.0.0.1:8765` (6 tab: Đọc, Clone giọng, Thư viện giọng, Job, Lịch sử, Cài đặt).
+- Truy cập từ máy khác qua Tailscale (API key, MCP Streamable HTTP tại `/mcp`) — xem
+  [docs/REMOTE.md](docs/REMOTE.md).
+
+**Yêu cầu:** Windows, Linux hoặc macOS (kể cả Apple Silicon, xem mục macOS bên dưới); GPU NVIDIA
+từ 6 GB là tốt nhất; không có GPU vẫn chạy được nhưng chậm; cần khoảng 3 GB ổ đĩa.
 
 ## Cài một lệnh
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.3.0/install.ps1 | iex
 ```
 
 Linux / macOS:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.sh | bash
+curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.3.0/install.sh | bash
 ```
 
 ### macOS
@@ -36,22 +49,42 @@ bằng `brew install ffmpeg`. Có thể ép thiết bị bằng biến môi trư
 Hoặc cài thủ công (cần [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.2.0"
+uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.3.0"
 tqd-voicestudio doctor
 tqd-voicestudio install
 ```
 
-## Dùng
+## Dùng thử nhanh
 
 ```bash
 tqd-voicestudio say "Xin chào các bạn." -o xin-chao.wav
-tqd-voicestudio clone giong-cua-toi mau.wav --gender female --region nam
+tqd-voicestudio clone giong-cua-toi mau.wav --gender female --region nam --consent
 tqd-voicestudio voices --gender female
+tqd-voicestudio say -f truyen.txt --job          # văn bản dài: chạy nền, theo dõi tiến độ
+tqd-voicestudio jobs list                        # xem các job
+tqd-voicestudio import bai-viet.pdf -o bai.txt   # nhập từ txt/md/docx/pdf/URL
+tqd-voicestudio key new                          # tạo API key (cần khi mở cho máy khác)
 ```
+
+`--consent` là bắt buộc khi clone: chỉ clone giọng khi người đó đồng ý.
+
+Sau khi server nền chạy (lệnh `say` tự bật), mở web UI tại **http://127.0.0.1:8765** để đọc, clone,
+quản lý giọng, theo dõi job và lịch sử, chỉnh từ điển phát âm — không cần gõ lệnh.
+
+### Gói 22 giọng VIVOS
+
+```bash
+tqd-voicestudio install --voices vivos --yes
+```
+
+Gồm 17 giọng VIVOS (CC BY-NC-SA 4.0) và 5 giọng DNU-ViSpeech (CC BY-NC 4.0), chỉ dùng phi thương mại.
 
 ## MCP cho agent
 
-`tqd-voicestudio mcp-config` in sẵn cấu hình cho Claude Desktop, Cursor và Claude Code.
+`tqd-voicestudio mcp-config` in sẵn cấu hình cho Claude Desktop, Cursor và Claude Code (stdio cục bộ).
+Dùng từ máy khác qua Tailscale thì thêm `--remote http://100.x.y.z:8765` để in cấu hình HTTP
+(server expose MCP Streamable HTTP tại `/mcp`); chi tiết ở [docs/REMOTE.md](docs/REMOTE.md) và
+[docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md).
 
 ## Sự cố
 
