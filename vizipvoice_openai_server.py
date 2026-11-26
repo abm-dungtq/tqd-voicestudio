@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from lhotse.utils import fix_random_seed
 from pydantic import BaseModel, Field
 
+import tqd_voicestudio
 from tqd_voicestudio import config as tqd_config
 from tqd_voicestudio import netsec
 from tqd_voicestudio import jobs as tqd_jobs
@@ -723,6 +724,23 @@ class ViZipVoiceEngine:
         mf0 = sidecar.get("median_f0_hz")
         if isinstance(mf0, (int, float)):
             entry.median_f0_hz = float(mf0)
+
+    def delete_voice(self, name: str) -> VoiceEntry:
+        """Remove a user-enrolled voice (files in CUSTOM_VOICES_DIR). Presets and pack voices are refused."""
+        entry = self.resolve_voice(name)
+        if entry.kind != "custom":
+            raise PermissionError("không xóa được giọng studio có sẵn")
+        if LIBRARY_DIR is not None and (LIBRARY_DIR / entry.name).is_dir():
+            raise PermissionError("giọng thuộc gói thư viện (chỉ đọc), không xóa được")
+        wav = Path(entry.wav_path).resolve()
+        if CUSTOM_VOICES_DIR.resolve() not in wav.parents:
+            raise PermissionError("giọng thuộc gói thư viện (chỉ đọc), không xóa được")
+        for ext in (".wav", ".txt", ".json"):
+            (CUSTOM_VOICES_DIR / f"{entry.name}{ext}").unlink(missing_ok=True)
+        self.voices.pop(entry.name, None)
+        for key in [k for k, v in self.alias_map.items() if v == entry.name]:
+            self.alias_map.pop(key, None)
+        return entry
 
     def resolve_voice(self, name: str) -> VoiceEntry:
         q = nfc(name)
@@ -2036,6 +2054,42 @@ async def import_text(request: Request):
         raise HTTPException(501, str(exc)) from exc
     except importers.ImportFailure as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/v1/voices/{name}")
+def delete_voice(name: str, request: Request):
+    _check_auth(request)
+    assert engine is not None
+    try:
+        entry = engine.delete_voice(nfc(name))
+    except KeyError:
+        raise HTTPException(404, f"voice {name!r} not found")
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    return {"id": entry.name, "deleted": True}
+
+
+WEB_DIR = Path(tqd_voicestudio.__file__).resolve().parent / "web"
+
+
+@app.get("/", include_in_schema=False)
+def web_index():
+    index = WEB_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(404, "web UI not installed")
+    return Response(content=index.read_bytes(), media_type="text/html; charset=utf-8",
+                    headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/static/{path:path}", include_in_schema=False)
+def web_static(path: str):
+    root = WEB_DIR.resolve()
+    target = (WEB_DIR / path).resolve()
+    if root not in target.parents or not target.is_file():
+        raise HTTPException(404, "not found")
+    ctype = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+             ".svg": "image/svg+xml", ".html": "text/html; charset=utf-8"}.get(target.suffix.lower(), "application/octet-stream")
+    return Response(content=target.read_bytes(), media_type=ctype, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/v1/lexicon")

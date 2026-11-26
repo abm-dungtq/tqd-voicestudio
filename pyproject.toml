@@ -57,6 +57,7 @@ include = ["zipvoice*", "vizipvoice_addons*", "tqd_voicestudio*"]
 
 [tool.setuptools.package-data]
 vizipvoice_addons = ["data/*.json"]
+tqd_voicestudio = ["web/*"]
 
 [tool.isort]
 profile = "black"

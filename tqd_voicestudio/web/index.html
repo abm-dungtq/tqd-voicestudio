@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>TQD-VoiceStudio</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>TQD-VoiceStudio</h1>
+      <p>Đọc tiếng Việt, clone giọng và quản lý job</p>
+    </div>
+    <div class="top-actions">
+      <span id="serverState" class="pill">Đang kiểm tra…</span>
+      <button id="keyBtn" class="ghost" type="button">API key</button>
+    </div>
+  </header>
+
+  <section id="keyPanel" class="key-panel hidden" aria-live="polite">
+    <h2>Nhập API key</h2>
+    <p>Server này yêu cầu Bearer key. Key chỉ lưu trong trình duyệt của bạn.</p>
+    <div class="row">
+      <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Dán API key">
+      <button id="saveKeyBtn" type="button">Lưu key</button>
+      <button id="forgetKeyBtn" class="ghost" type="button">Quên key</button>
+    </div>
+  </section>
+
+  <div id="banner" class="banner hidden" role="alert"></div>
+
+  <nav class="tabs" aria-label="Điều hướng chính">
+    <button class="tab active" data-tab="read" type="button">Đọc</button>
+    <button class="tab" data-tab="clone" type="button">Clone giọng</button>
+    <button class="tab" data-tab="library" type="button">Thư viện giọng</button>
+    <button class="tab" data-tab="jobs" type="button">Job</button>
+    <button class="tab" data-tab="history" type="button">Lịch sử</button>
+    <button class="tab" data-tab="settings" type="button">Cài đặt</button>
+  </nav>
+
+  <main>
+    <section id="tab-read" class="tab-panel active">
+      <div class="grid two">
+        <div class="card">
+          <h2>Văn bản</h2>
+          <textarea id="inputText" rows="12" maxlength="25000" placeholder="Nhập văn bản tiếng Việt cần đọc…"></textarea>
+          <div class="muted line"><span id="wordCount">0 từ</span><span id="charCount">0 ký tự</span></div>
+          <details class="import-box">
+            <summary>Nhập từ file/link</summary>
+            <div class="stack">
+              <div class="row wrap">
+                <input id="importFile" type="file" accept=".txt,.md,.markdown,.docx,.pdf">
+                <button id="importFileBtn" type="button">Nhập file</button>
+              </div>
+              <div class="row wrap">
+                <input id="importUrl" type="url" placeholder="https://…">
+                <button id="importUrlBtn" type="button">Nhập link</button>
+              </div>
+              <div id="importStatus" class="muted"></div>
+            </div>
+          </details>
+          <div class="row wrap pause-row">
+            <input id="pauseSeconds" type="number" min="0.1" max="10" step="0.1" value="1" aria-label="Số giây ngắt">
+            <button id="insertPauseBtn" type="button" class="ghost">Chèn ngắt nghỉ</button>
+            <span class="muted">Chèn thẻ [pause:N] tại con trỏ</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Giọng &amp; âm thanh</h2>
+          <div class="filters row wrap">
+            <select id="filterGender" aria-label="Lọc giới tính"><option value="">Giới tính</option><option value="male">Nam</option><option value="female">Nữ</option></select>
+            <select id="filterRegion" aria-label="Lọc vùng"><option value="">Vùng</option><option value="Bắc">Bắc</option><option value="Trung">Trung</option><option value="Nam">Nam</option></select>
+            <select id="filterKind" aria-label="Lọc loại"><option value="">Loại</option><option value="preset">Có sẵn</option><option value="custom">Tự clone</option></select>
+          </div>
+          <div class="row">
+            <select id="voiceSelect" aria-label="Chọn giọng"></select>
+            <button id="sampleVoiceBtn" type="button" class="ghost">Nghe mẫu</button>
+          </div>
+          <audio id="sampleAudio" controls class="hidden"></audio>
+          <label>Tốc độ <span id="speedValue">1.00</span>x
+            <input id="speedInput" type="range" min="0.5" max="2" step="0.05" value="1">
+          </label>
+          <label>Định dạng
+            <select id="formatSelect"><option value="wav">WAV</option><option value="mp3">MP3</option><option value="flac">FLAC</option><option value="opus">Opus</option></select>
+          </label>
+          <div class="checks">
+            <label><input id="normalizeInput" type="checkbox"> Chuẩn hóa −16 LUFS</label>
+            <label><input id="trimInput" type="checkbox"> Rút ngắn khoảng lặng</label>
+            <label><input id="cacheInput" type="checkbox"> Không dùng cache</label>
+            <label><input id="qualityInput" type="checkbox"> QC bằng ASR</label>
+            <label><input id="subtitlesInput" type="checkbox"> Tạo phụ đề</label>
+            <label><input id="backgroundJobInput" type="checkbox"> Chạy nền (job)</label>
+          </div>
+          <div id="qcInfo" class="muted"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="switchline"><input id="rolesToggle" type="checkbox"> <strong>Kịch bản nhiều vai</strong></label>
+        <p class="muted">Mỗi dòng dạng “Vai: lời thoại”. Bấm phân tích rồi chọn giọng cho từng vai.</p>
+        <button id="analyzeRolesBtn" type="button" class="ghost hidden">Phân tích vai</button>
+        <div id="rolesList" class="roles-list"></div>
+      </div>
+
+      <div class="card">
+        <label class="switchline"><input id="musicEnabled" type="checkbox"> <strong>Nhạc nền</strong></label>
+        <div id="musicControls" class="grid four hidden">
+          <label>Bài nhạc<select id="musicSelect"></select></label>
+          <label>Âm lượng <span id="musicVolumeValue">−20</span> dB<input id="musicVolume" type="range" min="-45" max="0" value="-20"></label>
+          <label>Duck <span id="musicDuckValue">−12</span> dB<input id="musicDuck" type="range" min="-30" max="0" value="-12"></label>
+          <label>Fade-out <span id="musicFadeValue">2.0</span>s<input id="musicFade" type="range" min="0" max="10" step="0.5" value="2"></label>
+        </div>
+      </div>
+
+      <div class="card action-card">
+        <details id="advancedBox">
+          <summary>Nâng cao</summary>
+          <label>Webhook URL cho job <input id="webhookUrl" type="url" placeholder="https://… (tuỳ chọn)"></label>
+        </details>
+        <div class="row wrap">
+          <button id="speakBtn" class="primary" type="button">Đọc</button>
+          <span id="speakSpinner" class="spinner hidden" aria-label="Đang xử lý"></span>
+          <span id="elapsed" class="muted"></span>
+        </div>
+        <div id="speakError" class="error-text"></div>
+      </div>
+
+      <div id="resultPanel" class="card hidden">
+        <h2>Kết quả</h2>
+        <audio id="resultAudio" controls></audio>
+        <div class="row wrap result-actions">
+          <button id="downloadResultBtn" type="button">Tải audio</button>
+          <button id="downloadSrtBtn" type="button" class="hidden">Tải .srt</button>
+          <button id="downloadVttBtn" type="button" class="hidden">Tải .vtt</button>
+        </div>
+        <div class="rating-box">
+          <span>Đánh giá:</span>
+          <button id="rateUpBtn" type="button" title="Tốt">👍</button>
+          <button id="rateDownBtn" type="button" title="Chưa tốt">👎</button>
+          <input id="ratingNote" type="text" placeholder="Ghi chú (tuỳ chọn)">
+          <span id="ratingStatus" class="muted"></span>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-clone" class="tab-panel">
+      <div class="card narrow">
+        <h2>Clone giọng mới</h2>
+        <p class="muted">Clip tham chiếu nên dài 3–10 giây, rõ lời, ít tiếng ồn.</p>
+        <label>File audio <input id="cloneFile" type="file" accept="audio/*,.wav,.mp3,.flac"></label>
+        <label>Tên giọng <input id="cloneName" type="text" maxlength="80" placeholder="vi-bac-nu-tencua-ban-tunhien-v1"></label>
+        <div class="row wrap">
+          <label>Giới tính <select id="cloneGender"><option value="">Không rõ</option><option value="female">Nữ</option><option value="male">Nam</option></select></label>
+          <label>Vùng <select id="cloneRegion"><option value="">Không rõ</option><option value="Bắc">Bắc</option><option value="Trung">Trung</option><option value="Nam">Nam</option></select></label>
+        </div>
+        <label>Lời thoại trong clip (tuỳ chọn) <textarea id="cloneTranscript" rows="4"></textarea></label>
+        <label class="consent"><input id="cloneConsent" type="checkbox"> Tôi xác nhận người có giọng này đã đồng ý cho clone</label>
+        <button id="cloneSubmitBtn" class="primary" type="button" disabled>Clone giọng</button>
+        <div id="cloneStatus" class="status-text"></div>
+      </div>
+    </section>
+
+    <section id="tab-library" class="tab-panel">
+      <div class="card">
+        <div class="section-head"><h2>Thư viện giọng</h2><button id="reloadVoicesBtn" type="button" class="ghost">Tải lại</button></div>
+        <div class="filters row wrap">
+          <input id="librarySearch" type="search" placeholder="Tìm giọng…">
+          <select id="libraryGender"><option value="">Giới tính</option><option value="male">Nam</option><option value="female">Nữ</option></select>
+          <select id="libraryRegion"><option value="">Vùng</option><option value="Bắc">Bắc</option><option value="Trung">Trung</option><option value="Nam">Nam</option></select>
+          <select id="libraryKind"><option value="">Loại</option><option value="preset">Có sẵn</option><option value="custom">Tự clone</option></select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Tên</th><th>Giới tính</th><th>Vùng</th><th>Loại</th><th>Mô tả</th><th>Thao tác</th></tr></thead><tbody id="libraryBody"></tbody></table></div>
+        <audio id="libraryAudio" controls class="hidden"></audio>
+      </div>
+    </section>
+
+    <section id="tab-jobs" class="tab-panel">
+      <div class="card">
+        <div class="section-head"><h2>Job nền</h2><button id="refreshJobsBtn" type="button" class="ghost">Tải lại</button></div>
+        <div id="jobsList" class="list"></div>
+      </div>
+    </section>
+
+    <section id="tab-history" class="tab-panel">
+      <div class="card">
+        <div class="section-head"><h2>Lịch sử</h2><button id="refreshHistoryBtn" type="button" class="ghost">Tải lại</button></div>
+        <div id="historyList" class="list"></div>
+        <div class="row center"><button id="historyPrev" type="button" class="ghost">Trước</button><span id="historyPage" class="muted">Trang 1</span><button id="historyNext" type="button" class="ghost">Sau</button></div>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="tab-panel">
+      <div class="grid two">
+        <div class="card">
+          <h2>Từ điển phát âm</h2>
+          <div class="row wrap"><input id="lexWord" placeholder="Từ"><input id="lexPron" placeholder="Cách đọc"><button id="addLexRowBtn" type="button">Thêm</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Từ</th><th>Cách đọc</th><th></th></tr></thead><tbody id="lexiconBody"></tbody></table></div>
+          <button id="saveLexiconBtn" class="primary" type="button">Lưu từ điển</button><span id="lexiconStatus" class="muted"></span>
+        </div>
+        <div class="card">
+          <h2>Nhạc nền</h2>
+          <div class="row wrap"><input id="musicUploadFile" type="file" accept="audio/*"><input id="musicUploadName" placeholder="Tên bài"><button id="uploadMusicBtn" type="button">Tải lên</button></div>
+          <div id="musicList" class="list compact"></div>
+          <h2>Đánh giá</h2>
+          <button id="exportRatingsBtn" type="button">Tải ratings JSONL</button>
+          <h2>Thông tin server</h2>
+          <pre id="serverInfo" class="server-info">Đang tải…</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -47,6 +47,13 @@ class FakeEngine:
             return self.voices[name]
         raise KeyError(name)
 
+    def delete_voice(self, name):
+        entry = self.resolve_voice(name)
+        if entry.kind != "custom":
+            raise PermissionError("không xóa được giọng studio có sẵn")
+        self.voices.pop(entry.name, None)
+        return entry
+
     def acquire(self):
         pass
 
@@ -412,3 +419,57 @@ def test_import_missing_dependency_is_501(env, monkeypatch):
     c, _, _ = env
     r = c.post("/v1/import", files={"file": ("a.pdf", b"%PDF")})
     assert r.status_code == 501 and "uv tool install" in r.json()["detail"]
+
+
+# ---- web static shell + voice deletion ----
+def test_web_index_and_static_assets(env):
+    c, _, _ = env
+    index = c.get("/")
+    assert index.status_code == 200
+    assert index.headers["content-type"].startswith("text/html")
+    assert "TQD-VoiceStudio" in index.text
+    js = c.get("/static/app.js")
+    assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
+    css = c.get("/static/app.css")
+    assert css.status_code == 200 and css.headers["content-type"].startswith("text/css")
+
+
+def test_web_static_traversal_is_blocked(env):
+    c, _, _ = env
+    for path in (
+        "/static/../pyproject.toml",
+        "/static/%2e%2e/pyproject.toml",
+        "/static/%2e%2e%2fpyproject.toml",
+        "/static/sub/..%2f..%2fpyproject.toml",
+    ):
+        assert c.get(path).status_code == 404, path
+
+
+def test_delete_voice_custom_ok_preset_forbidden(env):
+    c, eng, _ = env
+    eng.voices["Mine"] = SimpleNamespace(name="Mine", kind="custom")
+    assert c.delete("/v1/voices/Mine").status_code == 200
+    assert "Mine" not in eng.voices
+    assert c.delete("/v1/voices/Mine").status_code == 404
+    r = c.delete("/v1/voices/Alpha")
+    assert r.status_code == 403 and "không xóa được" in r.json()["detail"]
+
+
+def test_engine_delete_voice_refuses_library_pack_copy(monkeypatch, tmp_path):
+    custom = tmp_path / "voices"
+    lib = tmp_path / "library" / "PackVoice"
+    custom.mkdir()
+    lib.mkdir(parents=True)
+    wav = custom / "PackVoice.wav"
+    wav.write_bytes(b"x")
+    monkeypatch.setattr(srv, "CUSTOM_VOICES_DIR", custom)
+    monkeypatch.setattr(srv, "LIBRARY_DIR", lib.parent)
+    entry = SimpleNamespace(name="PackVoice", kind="custom", wav_path=wav)
+    fake = SimpleNamespace(
+        resolve_voice=lambda name: entry,
+        voices={"PackVoice": entry},
+        alias_map={"packvoice": "PackVoice"},
+    )
+    with pytest.raises(PermissionError, match="gói thư viện"):
+        srv.ViZipVoiceEngine.delete_voice(fake, "PackVoice")
+    assert wav.exists()
