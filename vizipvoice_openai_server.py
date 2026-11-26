@@ -35,6 +35,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterator, List, Literal, Optional, Tuple
 
+# Enable CPU fallback for unsupported MPS ops before any torch work happens.
+# Must be set before torch is imported/used on macOS (Apple Silicon).
+if sys.platform == "darwin" or os.environ.get("VIZIPVOICE_DEVICE", "").strip().lower() == "mps":
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import numpy as np
 import soundfile as sf
 import torch
@@ -158,7 +163,18 @@ CUSTOM_VOICES_DIR = paths.voices_dir()
 
 MAX_STREAMS = int(os.environ.get("VIZIPVOICE_MAX_STREAMS", "4"))
 _dev = os.environ.get("VIZIPVOICE_DEVICE", "auto").strip().lower()
-DEVICE = ("cuda" if torch.cuda.is_available() else "cpu") if _dev == "auto" else _dev
+if _dev == "auto":
+    if torch.cuda.is_available():
+        DEVICE = "cuda"
+    elif torch.backends.mps.is_available():
+        DEVICE = "mps"
+    else:
+        DEVICE = "cpu"
+else:
+    DEVICE = _dev
+if DEVICE == "mps":
+    # Fallback for ops MPS does not implement; fp16 autocast stays off on MPS.
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 USE_FP16 = DEVICE == "cuda" and os.environ.get("VIZIPVOICE_FP16", "1").strip() not in ("0", "false", "no")
 NUM_STEP = int(os.environ.get("VIZIPVOICE_NUM_STEP", "16"))
 CHUNKER_MODE = os.environ.get("TQD_CHUNKER", "legacy").strip().lower()

@@ -478,7 +478,9 @@ class ViZipVoiceTTS:
         ) as segment_dir_name:
             segment_dir = Path(segment_dir_name)
             with torch.autocast(
-                device_type=self.device.type,
+                # fp16 only ever runs on CUDA; for mps/cpu use a valid "cpu"
+                # autocast context with enabled=False (a no-op).
+                device_type="cuda" if self.device.type == "cuda" else "cpu",
                 dtype=torch.float16,
                 enabled=self.use_fp16 and self.device.type == "cuda",
             ):

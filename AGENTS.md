@@ -10,6 +10,15 @@ which keeps the `D:\TTS` paths through env vars (`VIZIPVOICE_MODEL_DIR`, `VIZIPV
 `VIZIPVOICE_CT2_MODEL`, `VIZIPVOICE_LIBRARY_DIR`, `TQD_CHUNKER=legacy`). Develop in the
 worktree `D:\TTS\tqd-voice` (branch `tqd/v0.1`); never edit `D:\TTS\ViZipvoice`.
 
+## macOS support
+
+`VIZIPVOICE_DEVICE=auto` picks cuda → mps → cpu; explicit `mps` is allowed. On mps the server
+sets `PYTORCH_ENABLE_MPS_FALLBACK=1` before torch ops and keeps fp16 off (autocast runs as a
+no-op cpu context). doctor on Darwin recommends mps on Apple Silicon (experimental; fall back to
+`device = "cpu"` in config.toml if MPS errors) and never gives CUDA/NVIDIA advice. An explicit
+`VIZIPVOICE_DEVICE` env var overrides doctor's device recommendation (used by CI to force cpu).
+CI lives in `.github/workflows/ci.yml` (unit on ubuntu; smoke matrix ubuntu/windows/macos-14).
+
 ## Python env
 
 Windows venv: `.venv\Scripts\python.exe` (Python 3.12, torch 2.8 cu128).

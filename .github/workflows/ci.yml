@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "tqd/**"
+      - master
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: unit (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Create venv and install deps (CPU torch)
+        run: |
+          uv venv --python 3.12
+          uv pip install --torch-backend=cpu -e ".[import]" pytest httpx
+      - name: Run unit tests
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          .venv/bin/python -m pytest tests/addons tests/tts_service tests/tqd -q \
+            --deselect tests/tts_service/test_models.py::test_generation_ranges_match_public_api_limits
+
+  smoke:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Cache model downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/home/models
+            ${{ runner.temp }}/home/cache
+          key: tqd-models-${{ matrix.os }}-7903dcb99d5a17c2e59a0ef5f7db32de4bed357b
+      - name: Install tqd-voicestudio (CPU torch)
+        shell: bash
+        run: |
+          uv tool install --python 3.12 --torch-backend=cpu ".[import]"
+          uv tool dir --bin >> "$GITHUB_PATH"
+      - name: doctor
+        shell: bash
+        env:
+          TQD_VOICESTUDIO_HOME: ${{ runner.temp }}/home
+          PYTHONUTF8: "1"
+          VIZIPVOICE_DEVICE: cpu
+        run: tqd-voicestudio doctor
+      - name: install models
+        shell: bash
+        env:
+          TQD_VOICESTUDIO_HOME: ${{ runner.temp }}/home
+          PYTHONUTF8: "1"
+          VIZIPVOICE_DEVICE: cpu
+        run: tqd-voicestudio install --no-asr --yes
+      - name: say (smoke synth)
+        shell: bash
+        env:
+          TQD_VOICESTUDIO_HOME: ${{ runner.temp }}/home
+          PYTHONUTF8: "1"
+          VIZIPVOICE_DEVICE: cpu
+        run: |
+          tqd-voicestudio say "Xin chào, đây là bài kiểm tra trên CI." -o out.wav
+          uv run --no-project --python 3.12 python -c "import os,sys; s=os.path.getsize('out.wav'); print('out.wav bytes:', s); sys.exit(0 if s > 10000 else 1)"
+      - name: stop server
+        shell: bash
+        if: always()
+        env:
+          TQD_VOICESTUDIO_HOME: ${{ runner.temp }}/home
+          PYTHONUTF8: "1"
+        run: tqd-voicestudio stop || true
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}
+          path: |
+            out.wav
+            ${{ runner.temp }}/home/logs
+          if-no-files-found: warn
