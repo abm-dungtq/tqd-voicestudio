@@ -45,25 +45,26 @@ def ensure_server(cfg: Config, wait_s: float = 300) -> str:
             raise RuntimeError(f"port {cfg.port} is used by another program")
         return base_url(cfg)
 
-    paths.home().mkdir(parents=True, exist_ok=True)
-    paths.logs_dir().mkdir(parents=True, exist_ok=True)
-    env = os.environ | config.to_env(cfg)
-    kwargs: dict = {}
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
-    with open(paths.logs_dir() / "server.log", "ab") as log:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "tqd_voice", "serve"],
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            **kwargs,
-        )
-    (paths.home() / "server.pid").write_text(str(proc.pid), encoding="utf-8")
-    print("Đang khởi động TQD-Voice server (lần đầu có thể mất 1–2 phút)...", file=sys.stderr)
+    if info is None or info.get("status") != "loading":
+        paths.home().mkdir(parents=True, exist_ok=True)
+        paths.logs_dir().mkdir(parents=True, exist_ok=True)
+        env = os.environ | config.to_env(cfg)
+        kwargs: dict = {}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        with open(paths.logs_dir() / "server.log", "ab") as log:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "tqd_voice", "serve"],
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                **kwargs,
+            )
+        (paths.home() / "server.pid").write_text(str(proc.pid), encoding="utf-8")
+        print("Đang khởi động TQD-Voice server (lần đầu có thể mất 1–2 phút)...", file=sys.stderr)
 
     deadline = time.monotonic() + wait_s
     while time.monotonic() < deadline:
