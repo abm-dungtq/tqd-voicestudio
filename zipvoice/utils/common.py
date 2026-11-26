@@ -11,14 +11,16 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import torch
 from packaging import version
 from torch import distributed as dist
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.tensorboard import SummaryWriter
+
+if TYPE_CHECKING:
+    from torch.utils.tensorboard import SummaryWriter
 
 
 if hasattr(torch.amp, "GradScaler"):
@@ -130,7 +132,7 @@ class MetricsTracker(collections.defaultdict):
 
     def write_summary(
         self,
-        tb_writer: SummaryWriter,
+        tb_writer: "SummaryWriter",
         prefix: str,
         batch_idx: int,
     ) -> None:

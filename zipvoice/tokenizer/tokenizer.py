@@ -31,12 +31,16 @@ from zipvoice.tokenizer.normalizer import ChineseTextNormalizer, EnglishTextNorm
 
 try:
     from piper_phonemize import phonemize_espeak
-except Exception as ex:
-    raise RuntimeError(
-        f"{ex}\nPlease run\n"
-        "pip install piper_phonemize -f \
-            https://k2-fsa.github.io/icefall/piper_phonemize.html"
-    )
+except Exception as _piper_ex:
+    _piper_error = _piper_ex
+
+    def phonemize_espeak(*args, **kwargs):
+        raise RuntimeError(
+            f"{_piper_error}\nPlease run\n"
+            "pip install piper_phonemize -f "
+            "https://k2-fsa.github.io/icefall/piper_phonemize.html"
+        )
+
 
 jieba.default_logger.setLevel(logging.INFO)
 
