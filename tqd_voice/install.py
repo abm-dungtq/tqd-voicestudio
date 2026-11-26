@@ -38,10 +38,11 @@ def run(args) -> int:
         allow_patterns=["checkpoint-1860000.pt", "config.json", "model.json", "tokens.txt", "audio/*"],
     )
     print("Tải vocoder charactr/vocos-mel-24khz", file=sys.stderr)
-    snapshot_download("charactr/vocos-mel-24khz")
+    # max_workers=1: hub 0.36 symlink-probe race on Windows without symlink privilege
+    snapshot_download("charactr/vocos-mel-24khz", max_workers=1)
     if not args.no_asr:
         print("Tải ASR vinai/PhoWhisper-small", file=sys.stderr)
-        snapshot_download("vinai/PhoWhisper-small")
+        snapshot_download("vinai/PhoWhisper-small", max_workers=1)
 
     print(f"Đã ghi cấu hình: {config.save(rec)}")
 
