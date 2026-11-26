@@ -127,6 +127,18 @@ def _cmd_stop(args) -> int:
     return 0
 
 
+def _cmd_doctor(args) -> int:
+    from tqd_voice import doctor
+
+    return doctor.run(args, config.load())
+
+
+def _cmd_install(args) -> int:
+    from tqd_voice import install
+
+    return install.run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tqd-voice", description="TQD-Voice: Vietnamese TTS + voice cloning")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -158,6 +170,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--region")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=_cmd_voices)
+
+    s = sub.add_parser("doctor", help="analyse this machine and recommend a config")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--bench", action="store_true", help="time one synthesis")
+    s.set_defaults(fn=_cmd_doctor)
+
+    s = sub.add_parser("install", help="download models, write config, smoke test")
+    s.add_argument("--no-asr", action="store_true")
+    s.add_argument("--no-smoke", action="store_true")
+    s.set_defaults(fn=_cmd_install)
 
     s = sub.add_parser("stop", help="stop the background server")
     s.set_defaults(fn=_cmd_stop)

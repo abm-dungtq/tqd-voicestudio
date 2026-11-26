@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REF="${TQD_REF:-v0.1.0}"
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
+COMMANDS=(
+  "uv tool install --python 3.12 --torch-backend=auto \"git+https://github.com/abm-dungtq/tqd-voice@${REF}\""
+  "tqd-voice doctor"
+  "tqd-voice install"
+)
+
+if [ "$DRY_RUN" = "1" ]; then
+  printf '%s\n' "${COMMANDS[@]}"
+  exit 0
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Chưa có uv. Cài bằng: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  exit 1
+fi
+
+uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@${REF}"
+tqd-voice doctor || echo "doctor báo lỗi; 'tqd-voice install' sẽ tự dừng nếu lỗi chặn cài đặt." >&2
+tqd-voice install
