@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY, status TEXT, request_json TEXT, plan_json TEXT, progress REAL DEFAULT 0,
   segments_done INTEGER DEFAULT 0, segments_total INTEGER DEFAULT 0, error TEXT,
   created_at REAL, finished_at REAL, history_id TEXT, webhook_url TEXT, subtitles INTEGER DEFAULT 1,
-  webhook_attempts TEXT DEFAULT '[]', cancel_requested INTEGER DEFAULT 0
+  webhook_attempts TEXT DEFAULT '[]', cancel_requested INTEGER DEFAULT 0,
+  notified INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS ratings (
   id TEXT PRIMARY KEY, created_at REAL, history_id TEXT, job_id TEXT, segment_index INTEGER,
@@ -47,7 +48,14 @@ class Store:
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(_SCHEMA)
+            self._migrate_jobs_table()
             self._db.commit()
+
+    def _migrate_jobs_table(self) -> None:
+        """Add post-v0.2 job columns to databases created before them."""
+        cols = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "notified" not in cols:
+            self._db.execute("ALTER TABLE jobs ADD COLUMN notified INTEGER DEFAULT 0")
 
     def close(self) -> None:
         with self._lock:
@@ -170,6 +178,26 @@ class Store:
             "UPDATE jobs SET status='done', history_id=?, finished_at=? WHERE id=? AND status='running'",
             (history_id, finished_at, jid),
         )
+        return cur.rowcount == 1
+
+    def fail_job(self, jid: str, error: str, finished_at: float) -> bool:
+        """Atomically fail a running job; false when cancellation won the race."""
+        cur = self._exec(
+            "UPDATE jobs SET status='failed', error=?, finished_at=? WHERE id=? AND status='running'",
+            (error, finished_at, jid),
+        )
+        return cur.rowcount == 1
+
+    def terminal_jobs_by_finish(self) -> List[Dict[str, Any]]:
+        """Terminal jobs, most recently finished first (creation time as tie/fallback)."""
+        return self._all(
+            "SELECT * FROM jobs WHERE status IN ('done','failed','canceled') "
+            "ORDER BY COALESCE(finished_at, created_at) DESC, rowid DESC"
+        )
+
+    def claim_notification(self, jid: str) -> bool:
+        """Atomically claim the single webhook notification slot for a job."""
+        cur = self._exec("UPDATE jobs SET notified=1 WHERE id=? AND notified=0", (jid,))
         return cur.rowcount == 1
 
     def delete_job(self, jid: str) -> bool:

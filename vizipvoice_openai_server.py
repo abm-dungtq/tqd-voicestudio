@@ -31,6 +31,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterator, List, Literal, Optional, Tuple
@@ -528,6 +529,7 @@ class VoiceEntry:
     style: Optional[str] = None
     median_f0_hz: Optional[float] = None
     transcript_source: Optional[str] = None
+    voice_gen: Optional[str] = None
     featured: bool = False
     recommended_speed: float = 1.0
     description: str = ""
@@ -735,6 +737,7 @@ class ViZipVoiceEngine:
         entry.gender = sidecar.get("gender") or parsed.get("gender")
         entry.region = sidecar.get("region") or parsed.get("region")
         entry.style = parsed.get("style")
+        entry.voice_gen = str(sidecar["gen"]) if sidecar.get("gen") else None
         if sidecar.get("description"):
             entry.description = str(sidecar["description"])
         mf0 = sidecar.get("median_f0_hz")
@@ -891,9 +894,11 @@ class ViZipVoiceEngine:
             median_f0 = voice_meta.estimate_median_f0(tensor, NATIVE_SR)
         except Exception:
             median_f0 = None
+        generation = uuid.uuid4().hex
         voice_meta.write_sidecar(
             CUSTOM_VOICES_DIR / f"{name}.json",
             {
+                "gen": generation,
                 "gender": gender_norm,
                 "region": region_norm,
                 "description": description,
@@ -921,6 +926,7 @@ class ViZipVoiceEngine:
             style=(voice_meta.parse_voice_name(name) or {}).get("style"),
             median_f0_hz=median_f0,
             transcript_source=transcript_source,
+            voice_gen=generation,
         )
         self._ensure_cached_prompt(entry)
         self.voices[name] = entry
@@ -1591,14 +1597,38 @@ def _lexicon_hash() -> str:
 
 
 def _voice_content_fingerprint(entry: VoiceEntry) -> str:
-    """Fingerprint the enrollment inputs currently backing a voice.
+    """Fingerprint the enrollment generation currently backing a voice.
 
-    File content itself is not hashed (prompt files are small but audio may not be);
-    mtime_ns+size is sufficient for enrollment invalidation because enrollment always
-    rewrites both files. The resolved prompt text is mixed in as a content fallback for
-    in-memory/test entries without backing files.
+    Enrollment/re-enrollment writes a fresh UUID in the voice JSON sidecar. Prefer that
+    generation over file metadata: unlike mtime+size it changes even when replacement
+    audio has exactly the same length and the filesystem timestamp granularity cooperates
+    poorly. Legacy voices without a generation keep the old mtime+size fingerprint.
     """
     h = hashlib.sha256()
+    wav_value = getattr(entry, "wav_path", None)
+    generation = getattr(entry, "voice_gen", None)
+    if not generation:
+        sidecars: List[Path] = []
+        if wav_value:
+            wav = Path(wav_value)
+            sidecars.append(wav.with_suffix(".json"))
+        sidecars.append(CUSTOM_VOICES_DIR / f"{getattr(entry, 'name', '')}.json")
+        seen_sidecars = set()
+        for sidecar_path in sidecars:
+            key = str(sidecar_path).lower()
+            if key in seen_sidecars:
+                continue
+            seen_sidecars.add(key)
+            sidecar = voice_meta.read_sidecar(sidecar_path)
+            if sidecar.get("gen"):
+                generation = str(sidecar["gen"])
+                break
+    if generation:
+        h.update(b"enrollment-gen\0")
+        h.update(str(generation).encode("ascii", "ignore"))
+        h.update(b"\0")
+        h.update(str(getattr(entry, "prompt_text", "") or "").encode("utf-8"))
+        return h.hexdigest()
     wav_value = getattr(entry, "wav_path", None)
     candidates: List[Path] = []
     if wav_value:

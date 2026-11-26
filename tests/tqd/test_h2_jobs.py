@@ -99,16 +99,16 @@ def test_store_update_failure_in_failure_handler_marks_job_failed(tmp_path, capl
         raise RuntimeError("render exploded")
 
     store, mgr, _ = make_manager(tmp_path, render)
-    orig_update = store.update_job
+    orig_fail = store.fail_job
     raised = {"done": False}
 
-    def flaky_update(jid, **fields):
-        if fields.get("status") == "failed" and not raised["done"]:
+    def flaky_fail(jid, error, finished_at):
+        if not raised["done"]:
             raised["done"] = True
             raise RuntimeError("sqlite write failed")
-        return orig_update(jid, **fields)
+        return orig_fail(jid, error, finished_at)
 
-    monkeypatch.setattr(store, "update_job", flaky_update)
+    monkeypatch.setattr(store, "fail_job", flaky_fail)
     jid = mgr.submit({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
     mgr.start()
     end = time.time() + 5

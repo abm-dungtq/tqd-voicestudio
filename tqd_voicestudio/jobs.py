@@ -110,6 +110,8 @@ class JobManager:
         self.jobs_max = jobs_max
         self._q: "queue.Queue[Optional[str]]" = queue.Queue()
         self._cancel: set = set()
+        self._active: set = set()
+        self._state_lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         for row in store.jobs_with_status("running"):
@@ -143,16 +145,36 @@ class JobManager:
         if not row:
             return None
         if row["status"] in ("queued", "running"):
-            # The in-memory set covers both branches of an active-job cancel: a queued
-            # job is ignored even if it was already dequeued, and a running job aborts
-            # at the next segment boundary. The SQL update itself is conditional so
-            # a concurrent worker cannot race a queued job back to running.
-            self._cancel.add(jid)
+            # The in-memory set is only a fast worker hint; the conditional SQL update
+            # is authoritative. Add it only when cancellation actually wins so a late
+            # cancel cannot retroactively poison a job that has already completed.
             if self.store.cancel_job(jid):
+                self._cancel.add(jid)
                 self._notify(jid)
-                self.prune_jobs()
+            # Pruning is deliberately not done here: it is worker/startup-only so a
+            # cancel call can never synchronously delete rows or files.
         current = self.store.get_job(jid)
         return current["status"] if current else None
+
+    def _active_add(self, jid: str) -> None:
+        with self._state_lock:
+            self._active.add(jid)
+
+    def _active_discard(self, jid: str) -> None:
+        with self._state_lock:
+            self._active.discard(jid)
+
+    def _active_ids(self) -> set:
+        with self._state_lock:
+            return set(self._active)
+
+    def _is_canceled(self, jid: str) -> bool:
+        current = self.store.get_job(jid) or {}
+        return bool(
+            jid in self._cancel
+            or current.get("cancel_requested")
+            or current.get("status") == "canceled"
+        )
 
     def view(self, row: dict) -> dict:
         jid = row["id"]
@@ -183,25 +205,26 @@ class JobManager:
             jid = self._q.get()
             if jid is None:
                 break
+            self._active_add(jid)
             try:
                 self._run(jid)
             except Exception as exc:
                 # Never strand a job because an infrastructure/store exception escaped
                 # _run. In particular, failures before the normal failure handler can
-                # otherwise leave the row permanently queued/running.
+                # otherwise leave the row permanently queued/running. The update is
+                # still conditional on a live state so it cannot overwrite cancellation.
                 logging.exception("job worker failed while processing %s", jid)
                 try:
-                    row = self.store.get_job(jid)
-                    if row and row["status"] in ("queued", "running"):
-                        self.store.update_job(
-                            jid,
-                            status="failed",
-                            error=f"{type(exc).__name__}: {exc}",
-                            finished_at=time.time(),
-                        )
+                    self.store._exec(
+                        "UPDATE jobs SET status='failed', error=?, finished_at=? "
+                        "WHERE id=? AND status IN ('queued','running')",
+                        (f"{type(exc).__name__}: {exc}", time.time(), jid),
+                    )
                 except Exception:
                     logging.exception("could not mark escaped job failure for %s", jid)
                 self._finish_safely(jid)
+            finally:
+                self._active_discard(jid)
 
     def _finish_safely(self, jid: str) -> None:
         try:
@@ -226,12 +249,7 @@ class JobManager:
             pauses: Pauses = []
             offset = 0
             for idx, seg in enumerate(plan):
-                current = self.store.get_job(jid) or {}
-                if (
-                    jid in self._cancel
-                    or current.get("cancel_requested")
-                    or current.get("status") == "canceled"
-                ):
+                if self._is_canceled(jid):
                     raise JobCanceled()
                 wav_p, meta_p = self.seg_paths(jid, idx)
                 if wav_p.is_file() and meta_p.is_file():
@@ -259,22 +277,33 @@ class JobManager:
                     pauses.append((a + offset, b + offset))
                 pieces.append(np.asarray(wav, dtype=np.float32))
                 offset += len(wav)
-            current = self.store.get_job(jid) or {}
-            if (
-                jid in self._cancel
-                or current.get("cancel_requested")
-                or current.get("status") == "canceled"
-            ):
+            if self._is_canceled(jid):
                 raise JobCanceled()
             combined = np.concatenate(pieces) if pieces else np.zeros(NATIVE_SR // 10, dtype=np.float32)
             hid = self.assemble(request, combined, segments, pauses, bool(row["subtitles"]))
+            # Cancellation can arrive while assemble() is doing finalization/encoding.
+            # Because assemble() owns output creation, the history row may already exist;
+            # remove it immediately rather than leaving an orphaned output behind.
+            if self._is_canceled(jid):
+                self._discard_assembled_history(hid)
+                raise JobCanceled()
             if not self.store.complete_job(jid, hid, time.time()):
+                # Cancellation won the atomic completion race after assembly.
+                self._discard_assembled_history(hid)
                 raise JobCanceled()
         except JobCanceled:
             self.store.update_job(jid, status="canceled", finished_at=time.time())
         except Exception as exc:
-            self.store.update_job(jid, status="failed", error=f"{type(exc).__name__}: {exc}", finished_at=time.time())
+            self.store.fail_job(jid, f"{type(exc).__name__}: {exc}", time.time())
         self._finish(jid)
+
+    def _discard_assembled_history(self, hid: Optional[str]) -> None:
+        if not hid:
+            return
+        try:
+            self.store.delete_history(hid)
+        except Exception:
+            log.exception("could not discard assembled output %s for canceled job", hid)
 
     def _finish(self, jid: str) -> None:
         row = self.store.get_job(jid)
@@ -303,18 +332,35 @@ class JobManager:
         return max(0, int(value))
 
     def prune_jobs(self) -> int:
-        """Keep only the newest ``jobs_max`` terminal jobs and delete older job dirs."""
-        terminal = [r for r in self.store.list_jobs() if r["status"] in TERMINAL_STATUSES]
+        """Keep the most recently finished ``jobs_max`` terminal jobs.
+
+        Active worker jobs count toward retention but are never deleted while claimed.
+        The directory is removed before the row: when removal fails, keeping the row
+        lets the next startup/worker prune pass retry the cleanup.
+        """
+        active = self._active_ids()
+        terminal = self.store.terminal_jobs_by_finish()
         removed = 0
         for row in terminal[self._jobs_limit():]:
-            if self.store.delete_job(row["id"]):
-                shutil.rmtree(self.jobs_dir / row["id"], ignore_errors=True)
+            jid = row["id"]
+            if jid in active:
+                continue
+            job_dir = self.jobs_dir / jid
+            try:
+                if job_dir.exists():
+                    shutil.rmtree(job_dir)
+            except Exception as exc:
+                log.warning("could not remove job directory %s; keeping job row for retry: %s", job_dir, exc)
+                continue
+            if self.store.delete_job(jid):
                 removed += 1
         return removed
 
     def _notify(self, jid: str) -> None:
         row = self.store.get_job(jid)
         if not row or not row["webhook_url"] or row["status"] not in TERMINAL_STATUSES:
+            return
+        if not self.store.claim_notification(jid):
             return
         payload = {"event": f"job.{row['status']}", "job": self.view(row)}
         url = row["webhook_url"]
