@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import tomllib
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -19,6 +20,8 @@ class Config:
     default_voice: str = "Đinh-Quyết"
     chunker: str = ""  # "" = server default; or legacy | v2
     library_dir: str = ""  # voice pack library (e.g. VIVOS); "" = none
+    webhook_secret: str = ""  # HMAC key for job webhooks (generated on first need)
+    history_max: int = 500  # newest N outputs kept in history/cache
 
 
 def load() -> Config:
@@ -51,6 +54,27 @@ def save(cfg: Config) -> Path:
     lines = [f"{k} = {_toml_value(v)}" for k, v in asdict(cfg).items()]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def ensure_webhook_secret() -> str:
+    """Return the webhook secret, generating and persisting it on first use."""
+    cfg = load()
+    if not cfg.webhook_secret:
+        cfg.webhook_secret = secrets.token_urlsafe(32)
+        save(cfg)
+    return cfg.webhook_secret
+
+
+def merge_recommended(current: Config, recommended: Config) -> Config:
+    """Apply only the doctor-produced fields onto the user's existing config."""
+    from dataclasses import replace
+
+    return replace(
+        current,
+        device=recommended.device,
+        fp16=recommended.fp16,
+        max_streams=recommended.max_streams,
+    )
 
 
 def to_env(cfg: Config) -> dict[str, str]:

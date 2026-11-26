@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import hashlib
 import io
 import json
 import logging
@@ -38,11 +39,15 @@ import torch
 import torchaudio
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from lhotse.utils import fix_random_seed
 from pydantic import BaseModel, Field
 
+from tqd_voicestudio import config as tqd_config
+from tqd_voicestudio import jobs as tqd_jobs
 from tqd_voicestudio import paths
+from tqd_voicestudio import store as tqd_store
 
 os.environ.setdefault("HF_HOME", str(paths.hf_cache()))
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -66,7 +71,7 @@ from zipvoice.utils.infer import (
 )
 import vizipvoice_addons
 from vizipvoice_addons import asr as qc_asr
-from vizipvoice_addons import chunker
+from vizipvoice_addons import chunker, importers, mixing, pauses, script_roles
 from vizipvoice_addons import audio_formats, lexicon, script_voices, subtitles, voice_meta
 from vizipvoice_addons.asr import cer as qc_cer
 from vizipvoice_addons.asr import normalize_for_compare
@@ -516,6 +521,13 @@ class VoiceEntry:
     style_prompts: Dict[str, PromptVariant] = field(default_factory=dict)
 
 
+class MusicSpec(BaseModel):
+    id: str
+    volume_db: float = -20.0
+    duck_db: float = -12.0
+    fade_s: float = Field(default=2.0, ge=0.0, le=30.0)
+
+
 class SpeechRequest(BaseModel):
     model: str = Field(default=MODEL_ID)
     input: str = Field(..., min_length=1, max_length=25000)
@@ -525,6 +537,29 @@ class SpeechRequest(BaseModel):
     speed: Optional[float] = Field(default=None, ge=0.5, le=2.0)
     style: Optional[str] = Field(default="auto")
     quality_check: Optional[bool] = Field(default=None)
+    cast: Optional[Dict[str, str]] = Field(default=None)
+    normalize: bool = Field(default=False)
+    trim_silence: bool = Field(default=False)
+    music: Optional[MusicSpec] = Field(default=None)
+    cache: bool = Field(default=True)
+
+
+class JobRequest(SpeechRequest):
+    response_format: Literal["pcm", "wav", "mp3", "opus", "flac"] = Field(default="wav")
+    webhook_url: Optional[str] = Field(default=None)
+    subtitles: bool = Field(default=True)
+
+
+class RolesBody(BaseModel):
+    input: str
+
+
+class RatingBody(BaseModel):
+    history_id: Optional[str] = None
+    job_id: Optional[str] = None
+    segment_index: Optional[int] = None
+    rating: Literal[1, -1]
+    note: Optional[str] = None
 
 
 class TimedSpeechRequest(SpeechRequest):
@@ -1187,6 +1222,7 @@ app = FastAPI(title="ViZipVoice OpenAI-Compatible Speech API", version="1.0.0")
 def _startup() -> None:
     global engine
     engine = ViZipVoiceEngine()
+    get_jobs()
 
 
 def _check_auth(request: Request) -> None:
@@ -1259,9 +1295,15 @@ def create_voice(
     region: str = Form(""),
     auto_transcribe: bool = Form(True),
     force: bool = Form(False),
+    consent: bool = Form(False),
 ):
     _check_auth(request)
     assert engine is not None
+    if not consent:
+        raise HTTPException(
+            400,
+            "Cần consent=true: chỉ clone giọng khi người đó đồng ý và không dùng để mạo danh.",
+        )
     name_clean = nfc(name)
     if name_clean in engine.voices and not force:
         raise HTTPException(409, f"voice {name_clean!r} already exists")
@@ -1326,24 +1368,114 @@ def _qc_headers(qc: dict) -> Dict[str, str]:
     }
 
 
-def _synthesize_runs(
-    req: SpeechRequest,
-) -> Tuple[torch.Tensor, List[dict], dict]:
-    """Split the input on [voice=...] tags, resolve all voices up front, then
-    synthesize each run with its own voice and join with 250 ms of silence.
+# ---------------------------------------------------------------------------
+# Studio state (history, jobs, music) — lazily bound to the current TQD home
+# ---------------------------------------------------------------------------
+_STORE: Optional[tqd_store.Store] = None
+_JOBS: Optional[tqd_jobs.JobManager] = None
+_STATE_LOCK = threading.Lock()
 
-    Returns (wav_24k tensor, timed segments, qc stats dict).
-    """
-    text = req.input.strip()
+
+def get_store() -> tqd_store.Store:
+    global _STORE
+    with _STATE_LOCK:
+        if _STORE is None or _STORE.db_path != paths.db_path():
+            _STORE = tqd_store.Store(paths.db_path())
+        return _STORE
+
+
+def get_jobs() -> tqd_jobs.JobManager:
+    global _JOBS
+    store = get_store()
+    with _STATE_LOCK:
+        if _JOBS is None or _JOBS.store is not store:
+            if _JOBS is not None:
+                _JOBS.stop()
+            _JOBS = tqd_jobs.JobManager(
+                store,
+                paths.home() / "jobs",
+                render=_job_render,
+                assemble=_job_assemble,
+                webhook_secret=tqd_config.ensure_webhook_secret,
+            )
+        return _JOBS
+
+
+def _history_dir() -> Path:
+    d = paths.home() / "history"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _music_dir() -> Path:
+    d = paths.home() / "music"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _lexicon_hash() -> str:
+    entries = lexicon.get()
+    blob = json.dumps(entries, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _cache_key(req: SpeechRequest, kind: str) -> str:
+    payload = {
+        "kind": kind,
+        "input": req.input,
+        "voice": req.voice,
+        "speed": req.speed,
+        "style": req.style,
+        "model": req.model,
+        "response_format": req.response_format,
+        "sample_rate": req.sample_rate,
+        "normalize": req.normalize,
+        "trim_silence": req.trim_silence,
+        "music": req.music.model_dump() if req.music else None,
+        "cast": dict(sorted(req.cast.items())) if req.cast else None,
+        "lexicon": _lexicon_hash(),
+        "quality_check": req.quality_check,
+    }
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _prepare_text(text: str, cast: Optional[Dict[str, str]]) -> str:
+    text = text.strip()
     if not text:
         raise HTTPException(400, "input must not be empty")
+    if cast:
+        try:
+            return script_roles.apply_cast(text, cast)
+        except KeyError as exc:
+            missing = exc.args[0]
+            raise HTTPException(
+                400,
+                f"vai chưa gán giọng: {', '.join(missing)}. "
+                f"Các vai trong văn bản: {', '.join(script_roles.parse_roles(text))}",
+            ) from exc
+    return text
+
+
+def _synthesize_runs(
+    req: SpeechRequest,
+    text: Optional[str] = None,
+) -> Tuple[torch.Tensor, List[dict], dict, List[Tuple[int, int]]]:
+    """Split the input on [voice=...] tags and [pause:N] markers, resolve all voices up front,
+    synthesize each run with its own voice and join runs with 250 ms of silence (explicit
+    pauses are exact silences).
+
+    Returns (wav_24k tensor, timed segments, qc stats dict, explicit pause ranges in samples).
+    """
+    text = text if text is not None else _prepare_text(req.input, req.cast)
 
     runs = script_voices.split_voice_runs(text, req.voice)
     if not runs:
         raise HTTPException(400, "input produced no speakable text")
 
     run_entries: List[VoiceEntry] = []
-    for run_voice, _ in runs:
+    run_parts = []
+    for run_voice, run_text in runs:
         try:
             run_entries.append(engine.resolve_voice(run_voice))
         except KeyError:
@@ -1351,142 +1483,464 @@ def _synthesize_runs(
                 400,
                 f"unknown voice {run_voice!r}; see GET /v1/voices",
             )
+        try:
+            run_parts.append(pauses.split_pauses(run_text))
+        except pauses.PauseError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     join_samples = int(NATIVE_SR * MULTI_VOICE_JOIN_MS / 1000)
     segments: List[dict] = []
+    pause_ranges: List[Tuple[int, int]] = []
     qc: dict = {"ran": False, "max_cer": 0.0, "retries": 0}
-    wavs: List[torch.Tensor] = []
+    pieces: List[torch.Tensor] = []
     offset_samples = 0
-    for idx, ((run_voice, run_text), run_entry) in enumerate(zip(runs, run_entries)):
-        run_segments: List[dict] = []
-        wav = engine.synthesize_tensor(
-            text=run_text,
-            entry=run_entry,
-            speed=req.speed,
-            style=req.style,
-            quality_check=req.quality_check,
-            segments_out=run_segments,
-            qc_out=qc,
-        )
-        for s in run_segments:
-            segments.append(
-                {
-                    "start": round(s["start"] + offset_samples / NATIVE_SR, 3),
-                    "end": round(s["end"] + offset_samples / NATIVE_SR, 3),
-                    "text": s["text"],
-                    "voice": run_entry.name,
-                }
+    prev_speech = False
+    for run_entry, parts in zip(run_entries, run_parts):
+        for kind, value in parts:
+            if kind == "pause":
+                n = int(round(float(value) * NATIVE_SR))
+                pieces.append(torch.zeros(1, n))
+                pause_ranges.append((offset_samples, offset_samples + n))
+                offset_samples += n
+                prev_speech = False
+                continue
+            if prev_speech:
+                pieces.append(torch.zeros(1, join_samples))
+                offset_samples += join_samples
+            part_segments: List[dict] = []
+            wav = engine.synthesize_tensor(
+                text=value,
+                entry=run_entry,
+                speed=req.speed,
+                style=req.style,
+                quality_check=req.quality_check,
+                segments_out=part_segments,
+                qc_out=qc,
             )
-        wavs.append(wav)
-        offset_samples += wav.shape[-1]
-        if idx < len(runs) - 1:
-            offset_samples += join_samples
+            for s in part_segments:
+                segments.append(
+                    {
+                        "start": round(s["start"] + offset_samples / NATIVE_SR, 3),
+                        "end": round(s["end"] + offset_samples / NATIVE_SR, 3),
+                        "text": s["text"],
+                        "voice": run_entry.name,
+                    }
+                )
+            pieces.append(wav)
+            offset_samples += wav.shape[-1]
+            prev_speech = True
 
-    if len(wavs) == 1:
-        combined = wavs[0]
+    if not pieces:
+        raise HTTPException(400, "input produced no speakable text")
+    combined = pieces[0] if len(pieces) == 1 else torch.cat(pieces, dim=1)
+    return combined, segments, qc, pause_ranges
+
+
+def _load_music(music_id: str) -> np.ndarray:
+    row = get_store().get_music(music_id)
+    if not row or not Path(row["path"]).is_file():
+        raise HTTPException(400, f"unknown music id {music_id!r}; see GET /v1/music")
+    wav, sr = sf.read(row["path"], dtype="float32", always_2d=True)
+    mono = torch.from_numpy(wav.mean(axis=1)).unsqueeze(0)
+    if sr != NATIVE_SR:
+        mono = torchaudio.functional.resample(mono, sr, NATIVE_SR)
+    return mono.squeeze(0).numpy()
+
+
+def _finalize_audio(
+    req: SpeechRequest,
+    wav: np.ndarray,
+    segments: List[dict],
+    pause_ranges: List[Tuple[int, int]],
+) -> Tuple[np.ndarray, List[dict]]:
+    """Post-processing at 24 kHz: trim_silence -> music -> normalize (segments are remapped)."""
+    x = np.asarray(wav, dtype=np.float32).reshape(-1)
+    if req.trim_silence:
+        x, cuts = mixing.trim_silences(x, NATIVE_SR, protected=pause_ranges)
+        if cuts:
+            segments = [
+                {**s, "start": mixing.remap_time(s["start"], cuts, NATIVE_SR),
+                 "end": mixing.remap_time(s["end"], cuts, NATIVE_SR)}
+                for s in segments
+            ]
+    if req.music:
+        music = _load_music(req.music.id)
+        x = mixing.mix_music(
+            x, music, NATIVE_SR,
+            volume_db=req.music.volume_db, duck_db=req.music.duck_db, fade_s=req.music.fade_s,
+        )
+    if req.normalize:
+        x = mixing.normalize_loudness(x, NATIVE_SR)
+    return x, segments
+
+
+def _store_output(
+    req: SpeechRequest,
+    kind: str,
+    wav24: np.ndarray,
+    segments: List[dict],
+    cache_key: str,
+) -> dict:
+    pcm_i16 = _tensor_to_int16_pcm(torch.from_numpy(np.asarray(wav24, dtype=np.float32)), NATIVE_SR, req.sample_rate)
+    raw = pcm_i16.tobytes()
+    if req.response_format == "pcm":
+        data, media_type = raw, f"audio/pcm;rate={req.sample_rate};encoding=signed-int;bits=16"
     else:
-        pieces: List[torch.Tensor] = []
-        for idx, w in enumerate(wavs):
-            pieces.append(w)
-            if idx < len(wavs) - 1:
-                pieces.append(torch.zeros(w.shape[0], join_samples, dtype=w.dtype))
-        combined = torch.cat(pieces, dim=1)
-    return combined, segments, qc
+        try:
+            data, media_type = audio_formats.encode_pcm16(raw, req.sample_rate, req.response_format)
+        except RuntimeError as exc:
+            raise HTTPException(500, str(exc)) from exc
+    duration = len(pcm_i16) / float(req.sample_rate) if len(pcm_i16) else 0.0
+    srt = subtitles.segments_to_srt(segments)
+    vtt = subtitles.segments_to_vtt(segments)
+    store = get_store()
+    hid = tqd_store.new_id()
+    path = _history_dir() / f"{hid}.{req.response_format}"
+    path.write_bytes(data)
+    store.add_history(
+        id=hid, kind=kind, cache_key=cache_key, text=req.input, voice=req.voice, model=req.model,
+        response_format=req.response_format, sample_rate=req.sample_rate, duration_s=round(duration, 3),
+        audio_path=str(path), media_type=media_type, segments_json=json.dumps(segments, ensure_ascii=False),
+        srt=srt, vtt=vtt, params_json=json.dumps({"speed": req.speed, "style": req.style}, ensure_ascii=False),
+    )
+    store.prune_history(tqd_config.load().history_max)
+    return {"history_id": hid, "data": data, "media_type": media_type, "duration_s": round(duration, 3),
+            "segments": segments, "srt": srt, "vtt": vtt}
+
+
+def _row_to_output(row: dict) -> dict:
+    return {
+        "history_id": row["id"],
+        "data": Path(row["audio_path"]).read_bytes(),
+        "media_type": row["media_type"],
+        "duration_s": row["duration_s"],
+        "segments": json.loads(row["segments_json"] or "[]"),
+        "srt": row["srt"],
+        "vtt": row["vtt"],
+    }
+
+
+def _audio_response(out: dict, req: SpeechRequest, headers: Dict[str, str]):
+    if req.response_format != "pcm":
+        return Response(content=out["data"], media_type=out["media_type"], headers=headers)
+    raw = out["data"]
+    chunk_bytes = PCM_CHUNK_SAMPLES * 2
+
+    def _pcm_iter() -> Iterator[bytes]:
+        for offset in range(0, len(raw), chunk_bytes):
+            yield raw[offset : offset + chunk_bytes]
+
+    return StreamingResponse(_pcm_iter(), media_type=out["media_type"], headers=headers)
+
+
+def _produce(req: SpeechRequest, kind: str) -> Tuple[dict, Dict[str, str]]:
+    """Cache lookup -> synth -> post-process -> encode -> history. Returns (output, headers)."""
+    if req.sample_rate not in SUPPORTED_RATES:
+        raise HTTPException(400, f"sample_rate must be one of {SUPPORTED_RATES}")
+    store = get_store()
+    key = _cache_key(req, kind)
+    headers = {"X-Sample-Rate": str(req.sample_rate)}
+    if req.cache:
+        row = store.find_cached(key)
+        if row:
+            headers.update({"X-TQD-Cache": "hit", "X-TQD-History-Id": row["id"]})
+            return _row_to_output(row), headers
+
+    assert engine is not None
+    engine.acquire()
+    t0 = time.perf_counter()
+    try:
+        wav_24k, segments, qc, pause_ranges = _synthesize_runs(req)
+    finally:
+        engine.release()
+    x, segments = _finalize_audio(req, wav_24k.squeeze(0).numpy(), segments, pause_ranges)
+    out = _store_output(req, kind, x, segments, key)
+    log.info(
+        "speech done: voice=%s fmt=%s sr=%d synth=%.2fs audio=%.2fs",
+        req.voice, req.response_format, req.sample_rate, time.perf_counter() - t0, out["duration_s"],
+    )
+    headers.update(_qc_headers(qc))
+    headers.update({"X-TQD-Cache": "miss", "X-TQD-History-Id": out["history_id"]})
+    return out, headers
+
+
+# ---- job seams -------------------------------------------------------------
+def _job_render(request: dict, seg: dict):
+    req = SpeechRequest(
+        **{**request, "input": seg["text"], "voice": seg["voice"], "cast": None,
+           "normalize": False, "trim_silence": False, "music": None}
+    )
+    assert engine is not None
+    engine.acquire()
+    try:
+        wav, segments, _qc, pause_ranges = _synthesize_runs(req, text=seg["text"])
+    finally:
+        engine.release()
+    return wav.squeeze(0).numpy(), segments, pause_ranges
+
+
+def _job_assemble(request: dict, wav: np.ndarray, segments: List[dict], pauses_: List[Tuple[int, int]], subs: bool) -> str:
+    req = SpeechRequest(**request)
+    x, segments = _finalize_audio(req, wav, segments, pauses_)
+    return _store_output(req, "job", x, segments, _cache_key(req, "job"))["history_id"]
 
 
 @app.post("/v1/audio/speech")
 def create_speech(req: SpeechRequest, request: Request):
     _check_auth(request)
-    assert engine is not None
-    if req.sample_rate not in SUPPORTED_RATES:
-        raise HTTPException(400, f"sample_rate must be one of {SUPPORTED_RATES}")
-
-    engine.acquire()
-    t0 = time.perf_counter()
-    try:
-        wav_24k, _segments, qc = _synthesize_runs(req)
-        pcm_i16 = _tensor_to_int16_pcm(wav_24k.squeeze(0), NATIVE_SR, req.sample_rate)
-        synth_sec = time.perf_counter() - t0
-        audio_sec = len(pcm_i16) / float(req.sample_rate) if len(pcm_i16) else 0.0
-        rtf = synth_sec / audio_sec if audio_sec > 0 else 0.0
-        log.info(
-            "speech done: voice=%s fmt=%s sr=%d synth=%.2fs audio=%.2fs rtf=%.2f",
-            req.voice,
-            req.response_format,
-            req.sample_rate,
-            synth_sec,
-            audio_sec,
-            rtf,
-        )
-    finally:
-        engine.release()
-
-    raw_pcm_bytes = pcm_i16.tobytes()
-    headers = {"X-Sample-Rate": str(req.sample_rate)}
-    headers.update(_qc_headers(qc))
-
-    if req.response_format in ("wav", "mp3", "opus", "flac"):
-        try:
-            data, media_type = audio_formats.encode_pcm16(
-                raw_pcm_bytes, req.sample_rate, req.response_format
-            )
-        except RuntimeError as exc:
-            raise HTTPException(500, str(exc)) from exc
-        return Response(content=data, media_type=media_type, headers=headers)
-
-    # Stream PCM in 100ms chunks for compatibility with streaming clients
-    chunk_bytes = PCM_CHUNK_SAMPLES * 2
-
-    def _pcm_iter() -> Iterator[bytes]:
-        for offset in range(0, len(raw_pcm_bytes), chunk_bytes):
-            yield raw_pcm_bytes[offset : offset + chunk_bytes]
-
-    return StreamingResponse(
-        _pcm_iter(),
-        media_type=f"audio/pcm;rate={req.sample_rate};encoding=signed-int;bits=16",
-        headers=headers,
-    )
+    out, headers = _produce(req, "speech")
+    return _audio_response(out, req, headers)
 
 
 @app.post("/v1/audio/speech/timed")
 def create_speech_timed(req: TimedSpeechRequest, request: Request):
     _check_auth(request)
-    assert engine is not None
-    if req.sample_rate not in SUPPORTED_RATES:
-        raise HTTPException(400, f"sample_rate must be one of {SUPPORTED_RATES}")
-
-    engine.acquire()
-    try:
-        wav_24k, segments, qc = _synthesize_runs(req)
-        pcm_i16 = _tensor_to_int16_pcm(wav_24k.squeeze(0), NATIVE_SR, req.sample_rate)
-    finally:
-        engine.release()
-
-    try:
-        data, media_type = audio_formats.encode_pcm16(
-            pcm_i16.tobytes(), req.sample_rate, req.response_format
-        )
-    except RuntimeError as exc:
-        raise HTTPException(500, str(exc)) from exc
-
-    duration_s = len(pcm_i16) / float(req.sample_rate) if len(pcm_i16) else 0.0
+    out, headers = _produce(req, "timed")
     body = {
-        "audio_base64": base64.b64encode(data).decode("ascii"),
+        "audio_base64": base64.b64encode(out["data"]).decode("ascii"),
         "response_format": req.response_format,
-        "media_type": media_type,
+        "media_type": out["media_type"],
         "sample_rate": req.sample_rate,
-        "duration_s": round(duration_s, 3),
-        "segments": segments,
+        "duration_s": out["duration_s"],
+        "segments": out["segments"],
     }
     sub_fmt = (req.subtitle_format or "both").strip().lower()
     if sub_fmt in ("srt", "both"):
-        body["srt"] = subtitles.segments_to_srt(segments)
+        body["srt"] = out["srt"]
     if sub_fmt in ("vtt", "both"):
-        body["vtt"] = subtitles.segments_to_vtt(segments)
-
-    headers = {"X-Sample-Rate": str(req.sample_rate)}
-    headers.update(_qc_headers(qc))
+        body["vtt"] = out["vtt"]
     return JSONResponse(body, headers=headers)
+
+
+@app.post("/v1/script/roles")
+def script_roles_endpoint(body: RolesBody, request: Request):
+    _check_auth(request)
+    return {"roles": script_roles.parse_roles(body.input)}
+
+
+# ---- jobs ------------------------------------------------------------------
+@app.post("/v1/jobs", status_code=202)
+def create_job(req: JobRequest, request: Request):
+    _check_auth(request)
+    assert engine is not None
+    if req.sample_rate not in SUPPORTED_RATES:
+        raise HTTPException(400, f"sample_rate must be one of {SUPPORTED_RATES}")
+    if req.webhook_url and not re.match(r"^https?://", req.webhook_url):
+        raise HTTPException(400, "webhook_url phải bắt đầu bằng http:// hoặc https://")
+    text = _prepare_text(req.input, req.cast)
+    runs = script_voices.split_voice_runs(text, req.voice)
+    if not runs:
+        raise HTTPException(400, "input produced no speakable text")
+    for run_voice, run_text in runs:
+        try:
+            engine.resolve_voice(run_voice)
+        except KeyError:
+            raise HTTPException(400, f"unknown voice {run_voice!r}; see GET /v1/voices")
+        try:
+            pauses.split_pauses(run_text)
+        except pauses.PauseError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if req.music and not get_store().get_music(req.music.id):
+        raise HTTPException(400, f"unknown music id {req.music.id!r}; see GET /v1/music")
+    plan = tqd_jobs.plan_segments(text, req.voice, script_voices.split_voice_runs)
+    request_dict = req.model_dump(exclude={"webhook_url", "subtitles"})
+    request_dict.update({"input": text, "cast": None})
+    jobs = get_jobs()
+    jid = jobs.submit(request_dict, plan, req.webhook_url, req.subtitles)
+    return {"id": jid, "status": "queued"}
+
+
+def _job_or_404(jid: str) -> dict:
+    row = get_store().get_job(jid)
+    if not row:
+        raise HTTPException(404, "job not found")
+    return row
+
+
+def _job_history(jid: str) -> dict:
+    row = _job_or_404(jid)
+    if row["status"] != "done" or not row["history_id"]:
+        raise HTTPException(409, f"job chưa xong (trạng thái: {row['status']})")
+    hist = get_store().get_history(row["history_id"])
+    if not hist:
+        raise HTTPException(404, "kết quả của job đã bị xóa khỏi lịch sử")
+    return hist
+
+
+@app.get("/v1/jobs")
+def list_jobs(request: Request):
+    _check_auth(request)
+    jobs = get_jobs()
+    return {"object": "list", "data": [jobs.view(r) for r in get_store().list_jobs()]}
+
+
+@app.get("/v1/jobs/{jid}")
+def get_job(jid: str, request: Request):
+    _check_auth(request)
+    return get_jobs().view(_job_or_404(jid))
+
+
+@app.get("/v1/jobs/{jid}/audio")
+def job_audio(jid: str, request: Request):
+    _check_auth(request)
+    hist = _job_history(jid)
+    return Response(content=Path(hist["audio_path"]).read_bytes(), media_type=hist["media_type"])
+
+
+@app.get("/v1/jobs/{jid}/subtitles.srt")
+def job_srt(jid: str, request: Request):
+    _check_auth(request)
+    hist = _job_history(jid)
+    return Response(content=hist["srt"] or "", media_type="application/x-subrip; charset=utf-8")
+
+
+@app.get("/v1/jobs/{jid}/subtitles.vtt")
+def job_vtt(jid: str, request: Request):
+    _check_auth(request)
+    hist = _job_history(jid)
+    return Response(content=hist["vtt"] or "", media_type="text/vtt; charset=utf-8")
+
+
+@app.post("/v1/jobs/{jid}/cancel")
+def cancel_job(jid: str, request: Request):
+    _check_auth(request)
+    _job_or_404(jid)
+    status = get_jobs().cancel(jid)
+    return {"id": jid, "status": status}
+
+
+# ---- history + ratings -----------------------------------------------------
+@app.get("/v1/history")
+def list_history(request: Request, limit: int = 50, offset: int = 0):
+    _check_auth(request)
+    limit = max(1, min(limit, 500))
+    return {"object": "list", "data": get_store().list_history(limit, max(offset, 0))}
+
+
+@app.get("/v1/history/{hid}/audio")
+def history_audio(hid: str, request: Request):
+    _check_auth(request)
+    row = get_store().get_history(hid)
+    if not row or not Path(row["audio_path"]).is_file():
+        raise HTTPException(404, "history item not found")
+    return Response(content=Path(row["audio_path"]).read_bytes(), media_type=row["media_type"])
+
+
+@app.delete("/v1/history/{hid}")
+def delete_history(hid: str, request: Request):
+    _check_auth(request)
+    if not get_store().delete_history(hid):
+        raise HTTPException(404, "history item not found")
+    return {"id": hid, "deleted": True}
+
+
+@app.post("/v1/ratings", status_code=201)
+def create_rating(body: RatingBody, request: Request):
+    _check_auth(request)
+    store = get_store()
+    if not body.history_id and not body.job_id:
+        raise HTTPException(400, "cần history_id hoặc job_id")
+    text, voice, model, history_id, job_id = "", "", "", body.history_id, body.job_id
+    if body.job_id:
+        job = _job_or_404(body.job_id)
+        req = json.loads(job["request_json"])
+        plan = json.loads(job["plan_json"])
+        history_id = job["history_id"]
+        text, voice, model = req.get("input", ""), req.get("voice", ""), req.get("model", "")
+        if body.segment_index is not None:
+            if not 0 <= body.segment_index < len(plan):
+                raise HTTPException(400, "segment_index ngoài phạm vi")
+            text, voice = plan[body.segment_index]["text"], plan[body.segment_index]["voice"]
+    else:
+        hist = store.get_history(body.history_id)
+        if not hist:
+            raise HTTPException(404, "history item not found")
+        text, voice, model = hist["text"], hist["voice"], hist["model"]
+        if body.segment_index is not None:
+            segs = json.loads(hist["segments_json"] or "[]")
+            if not 0 <= body.segment_index < len(segs):
+                raise HTTPException(400, "segment_index ngoài phạm vi")
+            text, voice = segs[body.segment_index]["text"], segs[body.segment_index].get("voice", voice)
+    rid = store.add_rating(
+        history_id=history_id, job_id=job_id, segment_index=body.segment_index,
+        rating=body.rating, note=body.note, text=text, voice=voice, model=model,
+    )
+    return {"id": rid}
+
+
+@app.get("/v1/ratings")
+def list_ratings(request: Request, format: str = "json"):
+    _check_auth(request)
+    rows = get_store().list_ratings()
+    if format == "jsonl":
+        body = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+        return Response(content=body, media_type="application/x-ndjson; charset=utf-8")
+    if format != "json":
+        raise HTTPException(400, "format phải là json hoặc jsonl")
+    return {"object": "list", "data": rows}
+
+
+# ---- music -----------------------------------------------------------------
+@app.post("/v1/music", status_code=201)
+def upload_music(request: Request, file: UploadFile = File(...), name: str = Form("")):
+    _check_auth(request)
+    raw = file.file.read()
+    if not raw:
+        raise HTTPException(400, "empty audio file")
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(413, "nhạc nền vượt quá giới hạn 50 MB")
+    try:
+        wav, sr = audio_formats.decode_audio(raw)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    mid = tqd_store.new_id()
+    path = _music_dir() / f"{mid}.wav"
+    sf.write(str(path), wav, sr, subtype="PCM_16")
+    duration = round(len(wav) / float(sr), 3)
+    label = name.strip() or (file.filename or mid)
+    get_store()._exec(
+        "INSERT INTO music (id,name,duration,path,created_at) VALUES (?,?,?,?,?)",
+        (mid, label, duration, str(path), time.time()),
+    )
+    return {"id": mid, "name": label, "duration": duration}
+
+
+@app.get("/v1/music")
+def list_music(request: Request):
+    _check_auth(request)
+    return {"object": "list", "data": get_store().list_music()}
+
+
+@app.delete("/v1/music/{mid}")
+def delete_music(mid: str, request: Request):
+    _check_auth(request)
+    if not get_store().delete_music(mid):
+        raise HTTPException(404, "music not found")
+    return {"id": mid, "deleted": True}
+
+
+# ---- import ----------------------------------------------------------------
+@app.post("/v1/import")
+async def import_text(request: Request):
+    _check_auth(request)
+    ctype = request.headers.get("content-type", "")
+    try:
+        if ctype.startswith("application/json"):
+            body = await request.json()
+            url = (body or {}).get("url", "")
+            if not url:
+                raise HTTPException(400, "cần trường url")
+            return await run_in_threadpool(importers.import_url, url)
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None or not hasattr(upload, "read"):
+            raise HTTPException(400, "cần file (.txt .md .docx .pdf) hoặc JSON {url}")
+        data = await upload.read()
+        return await run_in_threadpool(importers.import_file, upload.filename or "", data)
+    except importers.MissingDependency as exc:
+        raise HTTPException(501, str(exc)) from exc
+    except importers.ImportFailure as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.get("/v1/lexicon")

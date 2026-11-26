@@ -38,6 +38,7 @@ def run(args) -> int:
     cfg = config.load()
     facts = doctor.collect(cfg)
     rec, checks = doctor.recommend(facts, cfg)
+    rec = config.merge_recommended(cfg, rec)
     doctor.print_report(facts, checks, rec)
     errors = [c for c in checks if c.level == "error"]
     if errors:
