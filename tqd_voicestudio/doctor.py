@@ -11,8 +11,8 @@ import sys
 import time
 from dataclasses import asdict, dataclass, replace
 
-from tqd_voice import daemon, paths
-from tqd_voice.config import Config
+from tqd_voicestudio import daemon, paths
+from tqd_voicestudio.config import Config
 
 BENCH_TEXT = (
     "Đọc sách là một thói quen tốt, nhưng ngày càng ít người duy trì được trong "
@@ -136,7 +136,7 @@ def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
             "error",
             f"Máy có GPU NVIDIA (driver {f.driver_version}) nhưng PyTorch là bản CPU",
             "uv tool install --reinstall --python 3.12 --torch-backend=auto "
-            "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0",
+            "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.2.0",
         ))
     elif f.nvidia_smi:
         cfg.device, cfg.fp16, cfg.max_streams = "cpu", False, 1
@@ -149,7 +149,7 @@ def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
         cfg.device, cfg.fp16, cfg.max_streams = "cpu", False, 1
         checks.append(Check(
             "warn",
-            "Không có GPU NVIDIA: chạy CPU, chậm. Đo tốc độ bằng: tqd-voice doctor --bench",
+            "Không có GPU NVIDIA: chạy CPU, chậm. Đo tốc độ bằng: tqd-voicestudio doctor --bench",
         ))
     if f.disk_free_gb < 3:
         checks.append(Check("error", f"Ổ đĩa còn {f.disk_free_gb:.1f} GB, cần ít nhất 3 GB"))
@@ -166,7 +166,7 @@ def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
             f"Sửa port trong {paths.config_path()}",
         ))
     if not f.model_present:
-        checks.append(Check("warn", "Chưa có model", "tqd-voice install"))
+        checks.append(Check("warn", "Chưa có model", "tqd-voicestudio install"))
     return cfg, checks
 
 

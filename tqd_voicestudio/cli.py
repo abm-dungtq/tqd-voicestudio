@@ -1,4 +1,4 @@
-"""tqd-voice command line: serve | say | clone | voices | stop."""
+"""tqd-voicestudio command line: serve | say | clone | voices | stop."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from tqd_voice import config, daemon, paths
+from tqd_voicestudio import config, daemon, paths
 
 
 def _error_detail(resp) -> str:
@@ -155,25 +155,25 @@ def _cmd_mcp(args) -> int:
 
 
 def _cmd_mcp_config(args) -> int:
-    from tqd_voice import mcp_config
+    from tqd_voicestudio import mcp_config
 
     return mcp_config.run(args)
 
 
 def _cmd_doctor(args) -> int:
-    from tqd_voice import doctor
+    from tqd_voicestudio import doctor
 
     return doctor.run(args, config.load())
 
 
 def _cmd_install(args) -> int:
-    from tqd_voice import install
+    from tqd_voicestudio import install
 
     return install.run(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="tqd-voice", description="TQD-Voice: Vietnamese TTS + voice cloning")
+    p = argparse.ArgumentParser(prog="tqd-voicestudio", description="TQD-VoiceStudio: Vietnamese TTS + voice cloning")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("serve", help="run the local server in the foreground")

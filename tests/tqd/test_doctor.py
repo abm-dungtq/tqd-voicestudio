@@ -1,7 +1,7 @@
 from dataclasses import replace
 
-from tqd_voice.config import Config
-from tqd_voice.doctor import Facts, recommend
+from tqd_voicestudio.config import Config
+from tqd_voicestudio.doctor import Facts, recommend
 
 
 def facts(**kw) -> Facts:

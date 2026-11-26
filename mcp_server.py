@@ -5,10 +5,10 @@ Bridges MCP clients (Claude Desktop, IDE agents) to the ViZipVoice
 OpenAI-compatible speech server (vizipvoice_openai_server.py).
 
 Environment:
-  VIZIPVOICE_API_URL      Speech server base URL (default: start/reuse the local tqd-voice
+  VIZIPVOICE_API_URL      Speech server base URL (default: start/reuse the local tqd-voicestudio
                           daemon on 127.0.0.1:8765 on the first tool call)
   VIZIPVOICE_API_KEY      Bearer token; leave empty when the server runs without auth
-  VIZIPVOICE_OUTPUT_DIR   Directory for synthesized audio (default: <TQD_VOICE_HOME>/outputs/mcp)
+  VIZIPVOICE_OUTPUT_DIR   Directory for synthesized audio (default: <TQD_VOICESTUDIO_HOME>/outputs/mcp)
 
 Run:  python mcp_server.py
 """
@@ -29,8 +29,8 @@ from typing import Any, Optional
 import httpx
 from mcp.server.mcpserver import MCPServer
 
-import tqd_voice
-from tqd_voice import config, daemon, paths
+import tqd_voicestudio
+from tqd_voicestudio import config, daemon, paths
 
 log = logging.getLogger("vizipvoice.mcp")
 
@@ -44,8 +44,8 @@ SUPPORTED_FORMATS = ("wav", "pcm", "mp3", "flac", "opus")
 MAX_REFERENCE_BYTES = 25 * 1024 * 1024
 
 mcp = MCPServer(
-    name="tqd-voice",
-    version=tqd_voice.__version__,
+    name="tqd-voicestudio",
+    version=tqd_voicestudio.__version__,
     instructions=(
         "Vietnamese text-to-speech via ViZipVoice. Use synthesize_speech to render "
         "Vietnamese text to an audio file, list_voices to discover voice IDs, and "
@@ -227,7 +227,7 @@ async def voices_resource() -> str:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    log.info("TQD-Voice MCP server -> %s", API_URL or "local daemon (on first call)")
+    log.info("TQD-VoiceStudio MCP server -> %s", API_URL or "local daemon (on first call)")
     mcp.run(transport="stdio")
 
 

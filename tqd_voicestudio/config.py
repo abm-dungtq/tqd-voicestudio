@@ -6,7 +6,7 @@ import tomllib
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from tqd_voice import paths
+from tqd_voicestudio import paths
 
 
 @dataclass

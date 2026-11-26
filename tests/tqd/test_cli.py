@@ -2,9 +2,9 @@ import socket
 
 import pytest
 
-from tqd_voice import daemon
-from tqd_voice.cli import main
-from tqd_voice.config import Config
+from tqd_voicestudio import daemon
+from tqd_voicestudio.cli import main
+from tqd_voicestudio.config import Config
 
 
 def test_help_exits_zero():
@@ -40,7 +40,7 @@ def test_ensure_server_waits_for_loading_server(monkeypatch):
 
 
 def _windows_ensure(monkeypatch, tmp_path, wmi, detached):
-    monkeypatch.setenv("TQD_VOICE_HOME", str(tmp_path))
+    monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path))
     monkeypatch.setattr(daemon, "_IS_WINDOWS", True)
     states = iter([None, {"status": "ok", "voices": 1}])
     monkeypatch.setattr(daemon, "health", lambda cfg, timeout=1.0: next(states))
@@ -77,7 +77,7 @@ def test_windows_falls_back_to_detached_when_wmi_fails(monkeypatch, tmp_path, ca
 def test_serve_env_file_is_loaded(monkeypatch, tmp_path):
     import json
 
-    from tqd_voice import cli
+    from tqd_voicestudio import cli
 
     f = tmp_path / "env.json"
     f.write_text(json.dumps({"TQD_TEST_ENV_KEY": "giá trị"}, ensure_ascii=False), encoding="utf-8")
@@ -94,7 +94,7 @@ def test_env_file_prepends_pythonpath_to_sys_path(monkeypatch, tmp_path):
     import os
     import sys
 
-    from tqd_voice import cli
+    from tqd_voicestudio import cli
 
     a, b = str(tmp_path / "a"), str(tmp_path / "b")
     f = tmp_path / "env.json"

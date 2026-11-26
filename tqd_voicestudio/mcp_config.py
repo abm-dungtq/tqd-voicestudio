@@ -1,4 +1,4 @@
-"""`tqd-voice mcp-config`: print ready-made MCP client configuration."""
+"""`tqd-voicestudio mcp-config`: print ready-made MCP client configuration."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def resolve_exe() -> str:
-    exe = shutil.which("tqd-voice")
+    exe = shutil.which("tqd-voicestudio")
     path = Path(exe).absolute() if exe else Path(sys.argv[0]).resolve()
     if os.name == "nt" and not path.suffix:
         sibling = path.with_name(path.name + ".exe")
@@ -28,9 +28,9 @@ def _desktop_config_path() -> str:
 def render(client: str, exe: str) -> tuple[str, str]:
     """Return (stdout_text, stderr_note)."""
     if client == "claude-code":
-        return f'claude mcp add tqd-voice -- "{exe}" mcp', ""
+        return f'claude mcp add tqd-voicestudio -- "{exe}" mcp', ""
     body = json.dumps(
-        {"mcpServers": {"tqd-voice": {"command": exe, "args": ["mcp"]}}},
+        {"mcpServers": {"tqd-voicestudio": {"command": exe, "args": ["mcp"]}}},
         indent=2,
         ensure_ascii=False,
     )

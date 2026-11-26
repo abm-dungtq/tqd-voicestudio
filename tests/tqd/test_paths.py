@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from tqd_voice import paths
+from tqd_voicestudio import paths
 
 ENVS = (
-    "TQD_VOICE_HOME",
+    "TQD_VOICESTUDIO_HOME",
     "VIZIPVOICE_MODEL_DIR",
     "VIZIPVOICE_VOICES_DIR",
     "HF_HOME",
@@ -18,7 +18,7 @@ def _clear(monkeypatch):
 
 def test_home_env_drives_defaults(monkeypatch, tmp_path):
     _clear(monkeypatch)
-    monkeypatch.setenv("TQD_VOICE_HOME", str(tmp_path))
+    monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path))
     assert paths.model_dir() == tmp_path / "models" / "ViZipvoice"
     assert paths.voices_dir() == tmp_path / "voices"
     assert paths.hf_cache() == tmp_path / "cache" / "hf"
@@ -30,7 +30,7 @@ def test_home_env_drives_defaults(monkeypatch, tmp_path):
 
 def test_specific_env_wins(monkeypatch, tmp_path):
     _clear(monkeypatch)
-    monkeypatch.setenv("TQD_VOICE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("VIZIPVOICE_MODEL_DIR", str(tmp_path / "m"))
     monkeypatch.setenv("VIZIPVOICE_VOICES_DIR", str(tmp_path / "v"))
     monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
@@ -43,4 +43,4 @@ def test_specific_env_wins(monkeypatch, tmp_path):
 
 def test_default_home(monkeypatch):
     _clear(monkeypatch)
-    assert paths.home() == Path.home() / ".tqd-voice"
+    assert paths.home() == Path.home() / ".tqd-voicestudio"

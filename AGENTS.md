@@ -1,8 +1,8 @@
-# AGENTS.md — TQD-Voice / ViZipVoice dev notes
+# AGENTS.md — TQD-VoiceStudio / ViZipVoice dev notes
 
-Repo: Vietnamese ZipVoice TTS (flow-matching + Vocos), packaged as the `tqd-voice` CLI.
-All data directories are path-configurable via `tqd_voice/paths.py`: `TQD_VOICE_HOME`
-(default `~/.tqd-voice`) plus per-directory overrides (`VIZIPVOICE_MODEL_DIR`,
+Repo: Vietnamese ZipVoice TTS (flow-matching + Vocos), packaged as the `tqd-voicestudio` CLI.
+All data directories are path-configurable via `tqd_voicestudio/paths.py`: `TQD_VOICESTUDIO_HOME`
+(default `~/.tqd-voicestudio`) plus per-directory overrides (`VIZIPVOICE_MODEL_DIR`,
 `VIZIPVOICE_VOICES_DIR`, `VIZIPVOICE_CT2_MODEL`, `HF_HOME`, `VIZIPVOICE_LIBRARY_DIR`).
 
 Production on this box (port 8001) runs from `D:\TTS\ViZipvoice` via `D:\TTS\start-api.cmd`,

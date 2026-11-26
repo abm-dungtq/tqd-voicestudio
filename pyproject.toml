@@ -3,9 +3,10 @@ requires = ["setuptools>=69,<81", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tqd-voice"
-version = "0.1.0"
-description = "TQD-Voice: Vietnamese TTS + voice cloning CLI and MCP server (ViZipVoice/ZipVoice)"
+name = "tqd-voicestudio"
+version = "0.2.0"
+authors = [{ name = "DũngTQ - 0976202028" }]
+description = "TQD-VoiceStudio: Vietnamese TTS + voice cloning CLI and MCP server (ViZipVoice/ZipVoice)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11,<3.13"
@@ -37,13 +38,13 @@ dependencies = [
 ]
 
 [project.scripts]
-tqd-voice = "tqd_voice.cli:main"
+tqd-voicestudio = "tqd_voicestudio.cli:main"
 
 [tool.setuptools]
 py-modules = ["vizipvoice_openai_server", "mcp_server"]
 
 [tool.setuptools.packages.find]
-include = ["zipvoice*", "vizipvoice_addons*", "tqd_voice*"]
+include = ["zipvoice*", "vizipvoice_addons*", "tqd_voicestudio*"]
 
 [tool.setuptools.package-data]
 vizipvoice_addons = ["data/*.json"]

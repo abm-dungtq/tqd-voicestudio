@@ -1,15 +1,15 @@
-"""tqd-voice install: download models, write config, smoke-test one sentence."""
+"""tqd-voicestudio install: download models, write config, smoke-test one sentence."""
 
 from __future__ import annotations
 
 import os
 import sys
 
-from tqd_voice import config, daemon, doctor, mcp_config, paths
+from tqd_voicestudio import config, daemon, doctor, mcp_config, paths
 
 MODEL_REPO = "contextboxai/ViZipvoice"
 MODEL_REVISION = "7903dcb99d5a17c2e59a0ef5f7db32de4bed357b"
-SMOKE_TEXT = "Xin chào, TQD Voice đã cài đặt xong."
+SMOKE_TEXT = "Xin chào, TQD VoiceStudio đã cài đặt xong."
 
 
 def run(args) -> int:
@@ -65,7 +65,7 @@ def run(args) -> int:
         finally:
             daemon.stop_server(rec)
 
-    print('Xong. Thử: tqd-voice say "Xin chào"')
+    print('Xong. Thử: tqd-voicestudio say "Xin chào"')
     text, note = mcp_config.render("claude-desktop", mcp_config.resolve_exe())
     print("Cấu hình MCP (Claude Desktop):")
     print(text)

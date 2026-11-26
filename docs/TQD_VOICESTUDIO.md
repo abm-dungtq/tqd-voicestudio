@@ -1,6 +1,6 @@
-# TQD-Voice
+# TQD-VoiceStudio
 
-TQD-Voice là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, xây trên
+TQD-VoiceStudio là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, xây trên
 [ViZipVoice](https://github.com/iamdinhthuan/ViZipvoice) (model `contextboxai/ViZipvoice`,
 Apache-2.0). Mọi thứ chạy trên máy bạn: server chỉ nghe `127.0.0.1`.
 
@@ -8,24 +8,24 @@ Apache-2.0). Mọi thứ chạy trên máy bạn: server chỉ nghe `127.0.0.1`.
 
 | Lệnh | Tham số | Việc làm |
 |------|---------|----------|
-| `tqd-voice doctor` | `--json`, `--bench` | Phân tích máy (OS, GPU, VRAM, driver, RAM, ổ đĩa, ffmpeg, cổng, model) và đề xuất cấu hình. `--bench` đo tốc độ một câu. Thoát mã 1 nếu có lỗi chặn. |
-| `tqd-voice install` | `--no-asr`, `--no-smoke` | Tải model, vocoder, ASR vào `TQD_VOICE_HOME`, ghi `config.toml`, chạy thử một câu. |
-| `tqd-voice say [TEXT]` | `-f FILE`, `-v VOICE`, `-o OUT`, `--format {wav,mp3,flac,opus}`, `--speed X` | Đọc văn bản (TEXT, `-` cho stdin, hoặc `-f`) ra file. Tự bật server nền nếu cần. |
-| `tqd-voice clone NAME AUDIO` | `--text T`, `--gender {male,female}`, `--region {bac,trung,nam}`, `--force` | Tạo giọng từ một đoạn thu. Không có `--text` thì server tự nhận dạng lời. |
-| `tqd-voice voices` | `--gender`, `--region`, `--json` | Liệt kê giọng. |
-| `tqd-voice serve` | `--port N` | Chạy server ở foreground. |
-| `tqd-voice mcp` | | MCP server stdio, dùng chung server nền. |
-| `tqd-voice mcp-config` | `--client {claude-desktop,cursor,claude-code}` | In cấu hình MCP cho client. |
-| `tqd-voice stop` | | Tắt server nền. |
+| `tqd-voicestudio doctor` | `--json`, `--bench` | Phân tích máy (OS, GPU, VRAM, driver, RAM, ổ đĩa, ffmpeg, cổng, model) và đề xuất cấu hình. `--bench` đo tốc độ một câu. Thoát mã 1 nếu có lỗi chặn. |
+| `tqd-voicestudio install` | `--no-asr`, `--no-smoke` | Tải model, vocoder, ASR vào `TQD_VOICESTUDIO_HOME`, ghi `config.toml`, chạy thử một câu. |
+| `tqd-voicestudio say [TEXT]` | `-f FILE`, `-v VOICE`, `-o OUT`, `--format {wav,mp3,flac,opus}`, `--speed X` | Đọc văn bản (TEXT, `-` cho stdin, hoặc `-f`) ra file. Tự bật server nền nếu cần. |
+| `tqd-voicestudio clone NAME AUDIO` | `--text T`, `--gender {male,female}`, `--region {bac,trung,nam}`, `--force` | Tạo giọng từ một đoạn thu. Không có `--text` thì server tự nhận dạng lời. |
+| `tqd-voicestudio voices` | `--gender`, `--region`, `--json` | Liệt kê giọng. |
+| `tqd-voicestudio serve` | `--port N` | Chạy server ở foreground. |
+| `tqd-voicestudio mcp` | | MCP server stdio, dùng chung server nền. |
+| `tqd-voicestudio mcp-config` | `--client {claude-desktop,cursor,claude-code}` | In cấu hình MCP cho client. |
+| `tqd-voicestudio stop` | | Tắt server nền. |
 
 Server nền nghe `127.0.0.1:8765` (đổi bằng `port` trong `config.toml`). Trên Windows server nền
-được tạo qua WMI để không bị client MCP kill khi đóng phiên; dùng `tqd-voice stop` để tắt.
+được tạo qua WMI để không bị client MCP kill khi đóng phiên; dùng `tqd-voicestudio stop` để tắt.
 
 ## Biến môi trường
 
 | Biến | Ý nghĩa |
 |------|---------|
-| `TQD_VOICE_HOME` | Thư mục dữ liệu (mặc định `~/.tqd-voice`) |
+| `TQD_VOICESTUDIO_HOME` | Thư mục dữ liệu (mặc định `~/.tqd-voicestudio`) |
 | `TQD_CHUNKER` | `legacy` (mặc định) hoặc `v2`, cách chia đoạn văn bản |
 | `VIZIPVOICE_MODEL_DIR`, `VIZIPVOICE_VOICES_DIR`, `VIZIPVOICE_CT2_MODEL`, `HF_HOME` | Ghi đè từng thư mục |
 | `VIZIPVOICE_LIBRARY_DIR` | Thư mục thư viện giọng ngoài (tùy chọn) |
@@ -33,7 +33,7 @@ Server nền nghe `127.0.0.1:8765` (đổi bằng `port` trong `config.toml`). T
 | `VIZIPVOICE_API_URL`, `VIZIPVOICE_API_KEY`, `VIZIPVOICE_OUTPUT_DIR` | Cho MCP: dùng server có sẵn thay vì server nền |
 | `VIZIPVOICE_QUALITY_CHECK`, `VIZIPVOICE_QC_MAX_CER`, `VIZIPVOICE_QC_MAX_RETRIES` | Kiểm tra chất lượng bằng ASR |
 
-## Cấu trúc `~/.tqd-voice`
+## Cấu trúc `~/.tqd-voicestudio`
 
 ```text
 config.toml            port, device, fp16, num_step, max_streams, default_voice, chunker

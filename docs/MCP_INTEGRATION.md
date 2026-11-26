@@ -97,19 +97,19 @@ và pre-warm model trước khi nhận request; hãy đợi log `ViZipVoiceEngin
 
 ## 3. Chạy MCP bridge
 
-### Cách nhanh: `tqd-voice mcp` (daemon cục bộ)
+### Cách nhanh: `tqd-voicestudio mcp` (daemon cục bộ)
 
-Sau khi cài bằng `uv tool install` và chạy `tqd-voice install`, MCP client chỉ cần spawn
-`tqd-voice mcp`. Ở lần gọi tool đầu tiên, bridge tự bật (hoặc dùng lại) speech server nền
-tại `127.0.0.1:8765` (đọc `config.toml` trong `TQD_VOICE_HOME`), nên các phiên sau không
+Sau khi cài bằng `uv tool install` và chạy `tqd-voicestudio install`, MCP client chỉ cần spawn
+`tqd-voicestudio mcp`. Ở lần gọi tool đầu tiên, bridge tự bật (hoặc dùng lại) speech server nền
+tại `127.0.0.1:8765` (đọc `config.toml` trong `TQD_VOICESTUDIO_HOME`), nên các phiên sau không
 phải nạp lại model. Lần đầu có thể mất 1–2 phút. Trên Windows, daemon được tạo qua WMI để
 không bị Job Object của MCP client kill khi đóng phiên.
 
 ```bash
-tqd-voice mcp-config                       # JSON cho Claude Desktop (mặc định)
-tqd-voice mcp-config --client cursor       # JSON cho Cursor
-tqd-voice mcp-config --client claude-code  # lệnh `claude mcp add ...`
-tqd-voice stop                             # tắt daemon
+tqd-voicestudio mcp-config                       # JSON cho Claude Desktop (mặc định)
+tqd-voicestudio mcp-config --client cursor       # JSON cho Cursor
+tqd-voicestudio mcp-config --client claude-code  # lệnh `claude mcp add ...`
+tqd-voicestudio stop                             # tắt daemon
 ```
 
 Đặt `VIZIPVOICE_API_URL` để bỏ qua daemon và dùng một speech server có sẵn (ví dụ
@@ -130,7 +130,7 @@ python mcp_server.py
 |------|----------|---------|
 | `VIZIPVOICE_API_URL` | không đặt = daemon `127.0.0.1:8765` | Base URL của speech server |
 | `VIZIPVOICE_API_KEY` | rỗng | Bearer token; rỗng thì không gửi header `Authorization` |
-| `VIZIPVOICE_OUTPUT_DIR` | `<TQD_VOICE_HOME>/outputs/mcp` | Nơi ghi file audio trả về |
+| `VIZIPVOICE_OUTPUT_DIR` | `<TQD_VOICESTUDIO_HOME>/outputs/mcp` | Nơi ghi file audio trả về |
 
 ### Tool và resource
 

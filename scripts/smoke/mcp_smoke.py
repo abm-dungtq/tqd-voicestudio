@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end MCP stdio smoke test: spawn `<exe> mcp`, list tools, call list_voices + synthesize_speech.
 
-  python scripts/smoke/mcp_smoke.py --exe D:/TTS/ViZipvoice/.venv/Scripts/tqd-voice.exe
+  python scripts/smoke/mcp_smoke.py --exe D:/TTS/ViZipvoice/.venv/Scripts/tqd-voicestudio.exe
 
 Uses the installed `mcp` client API: mcp.Client over mcp.client.stdio.StdioServerParameters
 (Client.list_tools / Client.call_tool). The full current environment is passed to the child
@@ -22,7 +22,7 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 REQUIRED_TOOLS = {"list_voices", "synthesize_speech", "create_voice"}
-TEXT = "Xin chào, đây là thử nghiệm MCP của TQD Voice."
+TEXT = "Xin chào, đây là thử nghiệm MCP của TQD VoiceStudio."
 TOTAL_TIMEOUT_S = 400
 
 
@@ -55,10 +55,10 @@ async def run(exe: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--exe", default=shutil.which("tqd-voice"))
+    ap.add_argument("--exe", default=shutil.which("tqd-voicestudio"))
     args = ap.parse_args()
     if not args.exe:
-        print("tqd-voice executable not found; pass --exe", file=sys.stderr)
+        print("tqd-voicestudio executable not found; pass --exe", file=sys.stderr)
         return 1
     try:
         path = asyncio.run(asyncio.wait_for(run(args.exe), TOTAL_TIMEOUT_S))

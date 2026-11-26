@@ -206,7 +206,7 @@ egs/zipvoice/download/
 egs/zipvoice/exp/
 pronunciation_lexicon.json
 
-# TQD-Voice hygiene
+# TQD-VoiceStudio hygiene
 egs/zipvoice/data_smoke_*/
 .venv/
 plans/**/research/

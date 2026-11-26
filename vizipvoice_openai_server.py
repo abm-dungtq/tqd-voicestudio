@@ -42,7 +42,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from lhotse.utils import fix_random_seed
 from pydantic import BaseModel, Field
 
-from tqd_voice import paths
+from tqd_voicestudio import paths
 
 os.environ.setdefault("HF_HOME", str(paths.hf_cache()))
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")

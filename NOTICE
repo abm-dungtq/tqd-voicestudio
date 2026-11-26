@@ -1,7 +1,8 @@
-TQD-Voice
+TQD-VoiceStudio
+Tác giả: DũngTQ - 0976202028
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-TQD-Voice is based on:
+TQD-VoiceStudio is based on:
 
   * ZipVoice (https://github.com/k2-fsa/ZipVoice), Apache-2.0.
     Source files under zipvoice/ carry "Copyright 2024 Xiaomi Corp. (authors: Wei Kang ...)"

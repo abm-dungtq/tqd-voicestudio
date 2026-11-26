@@ -1,4 +1,4 @@
-"""Start/stop the local TQD-Voice server in the background."""
+"""Start/stop the local TQD-VoiceStudio server in the background."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import time
 import urllib.error
 import urllib.request
 
-from tqd_voice import config, paths
-from tqd_voice.config import Config
+from tqd_voicestudio import config, paths
+from tqd_voicestudio.config import Config
 
 
 def base_url(cfg: Config) -> str:
@@ -91,7 +91,7 @@ def ensure_server(cfg: Config, wait_s: float = 300) -> str:
         env_file = paths.home() / "server.env.json"
         env_file.write_text(json.dumps(env, ensure_ascii=False), encoding="utf-8")
         cmd = [
-            sys.executable, "-m", "tqd_voice", "serve",
+            sys.executable, "-m", "tqd_voicestudio", "serve",
             "--env-file", str(env_file),
             "--log", str(paths.logs_dir() / "server.log"),
         ]
@@ -108,7 +108,7 @@ def ensure_server(cfg: Config, wait_s: float = 300) -> str:
             how = "posix"
         print(f"spawn: {how}", file=sys.stderr)
         (paths.home() / "server.pid").write_text(str(pid), encoding="utf-8")
-        print("Đang khởi động TQD-Voice server (lần đầu có thể mất 1–2 phút)...", file=sys.stderr)
+        print("Đang khởi động TQD-VoiceStudio server (lần đầu có thể mất 1–2 phút)...", file=sys.stderr)
 
     deadline = time.monotonic() + wait_s
     while time.monotonic() < deadline:

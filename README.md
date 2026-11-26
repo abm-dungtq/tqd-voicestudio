@@ -1,6 +1,8 @@
-# TQD-Voice
+# TQD-VoiceStudio
 
-TQD-Voice là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, chạy hoàn toàn trên máy
+Tác giả: DũngTQ - 0976202028
+
+TQD-VoiceStudio là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, chạy hoàn toàn trên máy
 bạn, xây trên ViZipVoice (model `contextboxai/ViZipvoice`). Có sẵn 30 giọng, server cục bộ kiểu
 OpenAI và MCP cho agent.
 
@@ -12,43 +14,43 @@ nhưng chậm; cần khoảng 3 GB ổ đĩa.
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.ps1 | iex
 ```
 
 Linux:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.sh | bash
+curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.sh | bash
 ```
 
 Hoặc cài thủ công (cần [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0"
-tqd-voice doctor
-tqd-voice install
+uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.2.0"
+tqd-voicestudio doctor
+tqd-voicestudio install
 ```
 
 ## Dùng
 
 ```bash
-tqd-voice say "Xin chào các bạn." -o xin-chao.wav
-tqd-voice clone giong-cua-toi mau.wav --gender female --region nam
-tqd-voice voices --gender female
+tqd-voicestudio say "Xin chào các bạn." -o xin-chao.wav
+tqd-voicestudio clone giong-cua-toi mau.wav --gender female --region nam
+tqd-voicestudio voices --gender female
 ```
 
 ## MCP cho agent
 
-`tqd-voice mcp-config` in sẵn cấu hình cho Claude Desktop, Cursor và Claude Code.
+`tqd-voicestudio mcp-config` in sẵn cấu hình cho Claude Desktop, Cursor và Claude Code.
 
 ## Sự cố
 
-Chạy `tqd-voice doctor`: lệnh này kiểm tra GPU, driver, PyTorch, ffmpeg, cổng và model, rồi nói
-rõ cần sửa gì. Tắt server nền bằng `tqd-voice stop`.
+Chạy `tqd-voicestudio doctor`: lệnh này kiểm tra GPU, driver, PyTorch, ffmpeg, cổng và model, rồi nói
+rõ cần sửa gì. Tắt server nền bằng `tqd-voicestudio stop`.
 
 Chỉ clone giọng khi người đó đồng ý.
 
-Chi tiết lệnh, biến môi trường và kết quả đo: [docs/TQD_VOICE.md](docs/TQD_VOICE.md).
+Chi tiết lệnh, biến môi trường và kết quả đo: [docs/TQD_VOICESTUDIO.md](docs/TQD_VOICESTUDIO.md).
 
 ---
 

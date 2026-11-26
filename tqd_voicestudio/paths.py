@@ -1,4 +1,4 @@
-"""Single source of truth for TQD-Voice data directories (paths only, never created here)."""
+"""Single source of truth for TQD-VoiceStudio data directories (paths only, never created here)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 def home() -> Path:
-    env = os.environ.get("TQD_VOICE_HOME")
-    base = Path(env) if env else Path.home() / ".tqd-voice"
+    env = os.environ.get("TQD_VOICESTUDIO_HOME")
+    base = Path(env) if env else Path.home() / ".tqd-voicestudio"
     return base.expanduser()
 
 
