@@ -108,9 +108,17 @@ class Store:
         return True
 
     def prune_history(self, keep: int) -> int:
+        """Prune old history, never removing rows still referenced by a retained job."""
         rows = self._all("SELECT id FROM history ORDER BY created_at DESC, rowid DESC")
+        protected = {
+            r["history_id"] for r in self._all(
+                "SELECT DISTINCT history_id FROM jobs WHERE history_id IS NOT NULL AND history_id != ''"
+            )
+        }
         removed = 0
         for row in rows[max(keep, 0):]:
+            if row["id"] in protected:
+                continue
             if self.delete_history(row["id"]):
                 removed += 1
         return removed
@@ -141,6 +149,24 @@ class Store:
     def jobs_with_status(self, *statuses: str) -> List[Dict[str, Any]]:
         q = ",".join("?" * len(statuses))
         return self._all(f"SELECT * FROM jobs WHERE status IN ({q}) ORDER BY created_at, rowid", tuple(statuses))
+
+    def claim_job(self, jid: str) -> bool:
+        """Atomically move one queued job to running; false when already canceled/claimed."""
+        cur = self._exec("UPDATE jobs SET status='running' WHERE id=? AND status='queued'", (jid,))
+        return cur.rowcount == 1
+
+    def cancel_job(self, jid: str) -> bool:
+        """Atomically cancel a queued/running job; false when it was already terminal."""
+        cur = self._exec(
+            "UPDATE jobs SET status='canceled', cancel_requested=1, finished_at=? "
+            "WHERE id=? AND status IN ('queued','running')",
+            (time.time(), jid),
+        )
+        return cur.rowcount == 1
+
+    def delete_job(self, jid: str) -> bool:
+        cur = self._exec("DELETE FROM jobs WHERE id=?", (jid,))
+        return cur.rowcount == 1
 
     # ---- ratings ----
     def add_rating(self, **f: Any) -> str:

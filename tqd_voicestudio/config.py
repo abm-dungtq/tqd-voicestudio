@@ -22,6 +22,7 @@ class Config:
     library_dir: str = ""  # voice pack library (e.g. VIVOS); "" = none
     webhook_secret: str = ""  # HMAC key for job webhooks (generated on first need)
     history_max: int = 500  # newest N outputs kept in history/cache
+    jobs_max: int = 100  # newest N terminal jobs kept (older job rows/dirs are pruned)
     host: str = "127.0.0.1"  # bind address; non-loopback requires api_key
     api_key: str = ""  # Bearer token required by every route except /health
 

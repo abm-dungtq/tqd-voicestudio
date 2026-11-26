@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -22,6 +24,8 @@ MAX_PARAGRAPH_WORDS = 400
 _SENT_END = re.compile(r"(?<=[.!?…])\s+")
 
 Pauses = List[Tuple[int, int]]
+log = logging.getLogger("tqd.jobs")
+TERMINAL_STATUSES = ("done", "failed", "canceled")
 
 
 def _split_long_paragraph(text: str, max_words: int = MAX_PARAGRAPH_WORDS) -> List[str]:
@@ -92,6 +96,7 @@ class JobManager:
         backoff=webhook_mod.BACKOFF_S,
         sleep: Callable[[float], None] = time.sleep,
         post=None,
+        jobs_max=100,
         start: bool = True,
     ):
         self.store = store
@@ -102,6 +107,7 @@ class JobManager:
         self.backoff = backoff
         self.sleep = sleep
         self.post = post
+        self.jobs_max = jobs_max
         self._q: "queue.Queue[Optional[str]]" = queue.Queue()
         self._cancel: set = set()
         self._stop = threading.Event()
@@ -110,6 +116,7 @@ class JobManager:
             store.update_job(row["id"], status="queued")
         for row in store.jobs_with_status("queued"):
             self._q.put(row["id"])
+        self.prune_jobs()
         if start:
             self.start()
 
@@ -135,13 +142,17 @@ class JobManager:
         row = self.store.get_job(jid)
         if not row:
             return None
-        if row["status"] == "queued":
-            self.store.update_job(jid, status="canceled", finished_at=time.time())
-            self._notify(jid)
-        elif row["status"] == "running":
+        if row["status"] in ("queued", "running"):
+            # The in-memory set covers both branches of an active-job cancel: a queued
+            # job is ignored even if it was already dequeued, and a running job aborts
+            # at the next segment boundary. The SQL update itself is conditional so
+            # a concurrent worker cannot race a queued job back to running.
             self._cancel.add(jid)
-            self.store.update_job(jid, cancel_requested=1)
-        return self.store.get_job(jid)["status"]
+            if self.store.cancel_job(jid):
+                self._notify(jid)
+                self.prune_jobs()
+        current = self.store.get_job(jid)
+        return current["status"] if current else None
 
     def view(self, row: dict) -> dict:
         jid = row["id"]
@@ -174,14 +185,38 @@ class JobManager:
                 break
             try:
                 self._run(jid)
-            except Exception:
-                pass
+            except Exception as exc:
+                # Never strand a job because an infrastructure/store exception escaped
+                # _run. In particular, failures before the normal failure handler can
+                # otherwise leave the row permanently queued/running.
+                logging.exception("job worker failed while processing %s", jid)
+                try:
+                    row = self.store.get_job(jid)
+                    if row and row["status"] in ("queued", "running"):
+                        self.store.update_job(
+                            jid,
+                            status="failed",
+                            error=f"{type(exc).__name__}: {exc}",
+                            finished_at=time.time(),
+                        )
+                except Exception:
+                    logging.exception("could not mark escaped job failure for %s", jid)
+                self._finish_safely(jid)
+
+    def _finish_safely(self, jid: str) -> None:
+        try:
+            self._finish(jid)
+        except Exception:
+            logging.exception("job finish housekeeping failed for %s", jid)
 
     def _run(self, jid: str) -> None:
         row = self.store.get_job(jid)
         if not row or row["status"] not in ("queued", "running"):
             return
-        self.store.update_job(jid, status="running")
+        if not self.store.claim_job(jid):
+            # Lost the atomic claim race (commonly because cancel won first).
+            self._cancel.discard(jid)
+            return
         request = json.loads(row["request_json"])
         plan = json.loads(row["plan_json"])
         try:
@@ -192,7 +227,11 @@ class JobManager:
             offset = 0
             for idx, seg in enumerate(plan):
                 current = self.store.get_job(jid) or {}
-                if jid in self._cancel or current.get("cancel_requested"):
+                if (
+                    jid in self._cancel
+                    or current.get("cancel_requested")
+                    or current.get("status") == "canceled"
+                ):
                     raise JobCanceled()
                 wav_p, meta_p = self.seg_paths(jid, idx)
                 if wav_p.is_file() and meta_p.is_file():
@@ -227,15 +266,64 @@ class JobManager:
             self.store.update_job(jid, status="canceled", finished_at=time.time())
         except Exception as exc:
             self.store.update_job(jid, status="failed", error=f"{type(exc).__name__}: {exc}", finished_at=time.time())
+        self._finish(jid)
+
+    def _finish(self, jid: str) -> None:
+        row = self.store.get_job(jid)
+        if not row or row["status"] not in TERMINAL_STATUSES:
+            return
+        if row["status"] in ("done", "canceled"):
+            self._cleanup_segment_files(jid)
+        self._cancel.discard(jid)
+        self.prune_jobs()
         self._notify(jid)
+
+    def _cleanup_segment_files(self, jid: str) -> None:
+        d = self.jobs_dir / jid
+        if not d.is_dir():
+            return
+        for pattern in ("seg-*.wav", "seg-*.json"):
+            for path in d.glob(pattern):
+                path.unlink(missing_ok=True)
+        try:
+            d.rmdir()  # only succeeds when nothing but segment artifacts was present
+        except OSError:
+            pass
+
+    def _jobs_limit(self) -> int:
+        value = self.jobs_max() if callable(self.jobs_max) else self.jobs_max
+        return max(0, int(value))
+
+    def prune_jobs(self) -> int:
+        """Keep only the newest ``jobs_max`` terminal jobs and delete older job dirs."""
+        terminal = [r for r in self.store.list_jobs() if r["status"] in TERMINAL_STATUSES]
+        removed = 0
+        for row in terminal[self._jobs_limit():]:
+            if self.store.delete_job(row["id"]):
+                shutil.rmtree(self.jobs_dir / row["id"], ignore_errors=True)
+                removed += 1
+        return removed
 
     def _notify(self, jid: str) -> None:
         row = self.store.get_job(jid)
-        if not row or not row["webhook_url"] or row["status"] not in ("done", "failed", "canceled"):
+        if not row or not row["webhook_url"] or row["status"] not in TERMINAL_STATUSES:
             return
         payload = {"event": f"job.{row['status']}", "job": self.view(row)}
-        attempts = webhook_mod.deliver(
-            row["webhook_url"], payload, self.webhook_secret(),
-            backoff=self.backoff, sleep=self.sleep, post=self.post,
+        url = row["webhook_url"]
+        thread = threading.Thread(
+            target=self._deliver_webhook,
+            args=(jid, url, payload),
+            name=f"tqd-webhook-{jid}",
+            daemon=True,
         )
-        self.store.update_job(jid, webhook_attempts=json.dumps(attempts))
+        thread.start()
+
+    def _deliver_webhook(self, jid: str, url: str, payload: dict) -> None:
+        try:
+            attempts = webhook_mod.deliver(
+                url, payload, self.webhook_secret(),
+                backoff=self.backoff, sleep=self.sleep, post=self.post,
+            )
+            self.store.update_job(jid, webhook_attempts=json.dumps(attempts))
+        except Exception:
+            logging.exception("webhook delivery failed for job %s", jid)

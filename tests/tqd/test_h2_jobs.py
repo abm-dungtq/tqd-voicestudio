@@ -77,6 +77,73 @@ def test_resume_skips_existing_segment_files(tmp_path):
     assert assembled["n"] == expected
 
 
+def test_prune_jobs_keeps_exact_cap_and_removes_old_dirs(tmp_path):
+    store, mgr, _ = make_manager(tmp_path, lambda r, s: (tone(10), [], []), jobs_max=2)
+    ids = []
+    for i in range(4):
+        jid = store.add_job({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
+        store.update_job(jid, status="done", finished_at=time.time() + i)
+        d = tmp_path / "jobs" / jid
+        d.mkdir(parents=True)
+        (d / "leftover.txt").write_text("x")
+        ids.append(jid)
+    assert mgr.prune_jobs() == 2
+    assert [r["id"] for r in store.list_jobs()] == ids[-2:][::-1]
+    assert not (tmp_path / "jobs" / ids[0]).exists() and not (tmp_path / "jobs" / ids[1]).exists()
+    assert (tmp_path / "jobs" / ids[2]).exists() and (tmp_path / "jobs" / ids[3]).exists()
+    store.close()
+
+
+def test_store_update_failure_in_failure_handler_marks_job_failed(tmp_path, caplog, monkeypatch):
+    def render(request, seg):
+        raise RuntimeError("render exploded")
+
+    store, mgr, _ = make_manager(tmp_path, render)
+    orig_update = store.update_job
+    raised = {"done": False}
+
+    def flaky_update(jid, **fields):
+        if fields.get("status") == "failed" and not raised["done"]:
+            raised["done"] = True
+            raise RuntimeError("sqlite write failed")
+        return orig_update(jid, **fields)
+
+    monkeypatch.setattr(store, "update_job", flaky_update)
+    jid = mgr.submit({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
+    mgr.start()
+    end = time.time() + 5
+    while time.time() < end:
+        row = store.get_job(jid)
+        if row["status"] == "failed":
+            break
+        time.sleep(0.05)
+    mgr.stop()
+    row = store.get_job(jid)
+    assert row["status"] == "failed" and row["finished_at"] is not None
+    assert raised["done"] and "job worker failed" in caplog.text
+    store.close()
+
+
+def test_canceled_queued_job_never_renders_when_worker_claims(tmp_path):
+    calls = []
+
+    def render(request, seg):
+        calls.append(seg["text"])
+        return tone(10), [], []
+
+    store, mgr, _ = make_manager(tmp_path, render)
+    jid = mgr.submit({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
+    assert mgr.cancel(jid) == "canceled"
+    mgr.start()
+    time.sleep(0.3)
+    mgr.stop()
+    assert calls == []
+    row = store.get_job(jid)
+    assert row["status"] == "canceled"
+    assert not store.claim_job(jid), "a canceled row must fail the atomic queued-only claim"
+    store.close()
+
+
 def test_restart_requeues_running_jobs(tmp_path):
     store, mgr, _ = make_manager(tmp_path, lambda r, s: (tone(10), [], []))
     jid = store.add_job({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
@@ -111,7 +178,7 @@ def test_webhook_secret_generated_once_and_persisted(monkeypatch, tmp_path):
     monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path))
     s1 = config.ensure_webhook_secret()
     assert len(s1) >= 32 and config.ensure_webhook_secret() == s1 and config.load().webhook_secret == s1
-    assert config.load().history_max == 500
+    assert config.load().history_max == 500 and config.load().jobs_max == 100
 
 
 def _facts(**kw):
