@@ -44,3 +44,9 @@ def test_specific_env_wins(monkeypatch, tmp_path):
 def test_default_home(monkeypatch):
     _clear(monkeypatch)
     assert paths.home() == Path.home() / ".tqd-voicestudio"
+
+
+def test_db_path(monkeypatch, tmp_path):
+    _clear(monkeypatch)
+    monkeypatch.setenv("TQD_VOICESTUDIO_HOME", str(tmp_path))
+    assert paths.db_path() == tmp_path / "studio.db"

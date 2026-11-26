@@ -214,6 +214,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("install", help="download models, write config, smoke test")
     s.add_argument("--no-asr", action="store_true")
     s.add_argument("--no-smoke", action="store_true")
+    s.add_argument("--voices", choices=["vivos"], help="cài thêm gói giọng VIVOS (CC BY-NC-SA 4.0)")
+    s.add_argument("--yes", "-y", action="store_true", help="đồng ý giấy phép, không hỏi")
     s.set_defaults(fn=_cmd_install)
 
     s = sub.add_parser("mcp", help="run the MCP stdio server (uses the local daemon)")

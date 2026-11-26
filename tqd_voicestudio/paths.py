@@ -32,6 +32,10 @@ def ct2_asr_dir() -> Path:
     return Path(env).expanduser() if env else home() / "models" / "phowhisper-small-ct2"
 
 
+def db_path() -> Path:
+    return home() / "studio.db"
+
+
 def outputs_dir() -> Path:
     return home() / "outputs"
 

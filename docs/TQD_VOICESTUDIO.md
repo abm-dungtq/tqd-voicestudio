@@ -9,7 +9,7 @@ Apache-2.0). Mọi thứ chạy trên máy bạn: server chỉ nghe `127.0.0.1`.
 | Lệnh | Tham số | Việc làm |
 |------|---------|----------|
 | `tqd-voicestudio doctor` | `--json`, `--bench` | Phân tích máy (OS, GPU, VRAM, driver, RAM, ổ đĩa, ffmpeg, cổng, model) và đề xuất cấu hình. `--bench` đo tốc độ một câu. Thoát mã 1 nếu có lỗi chặn. |
-| `tqd-voicestudio install` | `--no-asr`, `--no-smoke` | Tải model, vocoder, ASR vào `TQD_VOICESTUDIO_HOME`, ghi `config.toml`, chạy thử một câu. |
+| `tqd-voicestudio install` | `--no-asr`, `--no-smoke`, `--voices vivos`, `--yes` | Tải model, vocoder, ASR vào `TQD_VOICESTUDIO_HOME`, ghi `config.toml`, chạy thử một câu. `--voices vivos` tải gói 22 giọng (17 VIVOS CC BY-NC-SA 4.0, 5 DNU-ViSpeech CC BY-NC 4.0) và đặt `library_dir`. Lệnh hiện giấy phép và hỏi xác nhận; không có terminal thì cần `--yes`. |
 | `tqd-voicestudio say [TEXT]` | `-f FILE`, `-v VOICE`, `-o OUT`, `--format {wav,mp3,flac,opus}`, `--speed X` | Đọc văn bản (TEXT, `-` cho stdin, hoặc `-f`) ra file. Tự bật server nền nếu cần. |
 | `tqd-voicestudio clone NAME AUDIO` | `--text T`, `--gender {male,female}`, `--region {bac,trung,nam}`, `--force` | Tạo giọng từ một đoạn thu. Không có `--text` thì server tự nhận dạng lời. |
 | `tqd-voicestudio voices` | `--gender`, `--region`, `--json` | Liệt kê giọng. |
@@ -79,4 +79,4 @@ RTX 3060). Thời gian chạy 200 giây, đã gồm cả lần khởi động se
 
 ## Giấy phép và giọng nói
 
-Mã và model theo Apache-2.0 (xem `NOTICE`). Chỉ clone giọng khi người đó đồng ý.
+Mã của TQD-VoiceStudio theo PolyForm Noncommercial 1.0.0 (chỉ phi thương mại, xem `LICENSE`); mã gốc ZipVoice/ViZipVoice giữ Apache-2.0 (xem `NOTICE`). Chỉ clone giọng khi người đó đồng ý.

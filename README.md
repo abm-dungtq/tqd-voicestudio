@@ -2,6 +2,8 @@
 
 Tác giả: DũngTQ - 0976202028
 
+**Chỉ dùng phi thương mại** (giấy phép PolyForm Noncommercial 1.0.0, xem `LICENSE` và `NOTICE`).
+
 TQD-VoiceStudio là công cụ dòng lệnh đọc văn bản tiếng Việt và clone giọng, chạy hoàn toàn trên máy
 bạn, xây trên ViZipVoice (model `contextboxai/ViZipvoice`). Có sẵn 30 giọng, server cục bộ kiểu
 OpenAI và MCP cho agent.

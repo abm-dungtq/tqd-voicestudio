@@ -18,6 +18,7 @@ class Config:
     max_streams: int = 2
     default_voice: str = "Đinh-Quyết"
     chunker: str = ""  # "" = server default; or legacy | v2
+    library_dir: str = ""  # voice pack library (e.g. VIVOS); "" = none
 
 
 def load() -> Config:
@@ -67,4 +68,6 @@ def to_env(cfg: Config) -> dict[str, str]:
     }
     if cfg.chunker != "":
         env["TQD_CHUNKER"] = cfg.chunker
+    if cfg.library_dir != "":
+        env["VIZIPVOICE_LIBRARY_DIR"] = cfg.library_dir
     return env
