@@ -20,11 +20,13 @@ from __future__ import annotations
 import base64
 import datetime
 import hashlib
+import hmac
 import io
 import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -40,11 +42,13 @@ import torchaudio
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from starlette.routing import Route
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from lhotse.utils import fix_random_seed
 from pydantic import BaseModel, Field
 
 from tqd_voicestudio import config as tqd_config
+from tqd_voicestudio import netsec
 from tqd_voicestudio import jobs as tqd_jobs
 from tqd_voicestudio import paths
 from tqd_voicestudio import store as tqd_store
@@ -1225,13 +1229,104 @@ def _startup() -> None:
     get_jobs()
 
 
+def _token_ok(header: str) -> bool:
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    return hmac.compare_digest(token.encode("utf-8"), API_KEY.encode("utf-8"))
+
+
 def _check_auth(request: Request) -> None:
     if not API_KEY:
         return
-    header = request.headers.get("authorization", "")
-    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
-    if token != API_KEY:
-        raise HTTPException(401, "invalid or missing bearer token")
+    if not _token_ok(request.headers.get("authorization", "")):
+        raise HTTPException(401, "invalid or missing bearer token", headers={"WWW-Authenticate": "Bearer"})
+
+
+_OPEN_EXACT = {("GET", "/health"), ("HEAD", "/health"), ("GET", "/"), ("HEAD", "/")}
+_OPEN_PREFIX = ("/static/",)
+
+
+def is_open_route(method: str, path: str) -> bool:
+    """Routes reachable without a Bearer token: /health and the static UI shell (/ and /static/*)."""
+    if (method.upper(), path) in _OPEN_EXACT:
+        return True
+    return method.upper() in ("GET", "HEAD") and path.startswith(_OPEN_PREFIX)
+
+
+class BearerAuthMiddleware:
+    """Pure ASGI gate (safe for streaming/SSE): every route needs the key when one is configured."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not API_KEY or is_open_route(scope["method"], scope["path"]):
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+        if _token_ok(headers.get("authorization", "")):
+            await self.app(scope, receive, send)
+            return
+        body = json.dumps({"detail": "invalid or missing bearer token"}).encode("utf-8")
+        await send({
+            "type": "http.response.start", "status": 401,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),
+                        (b"www-authenticate", b"Bearer")],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(BearerAuthMiddleware)
+
+
+class _McpGateway:
+    """ASGI endpoint for /mcp. The Streamable HTTP session manager is created per app startup
+    (its run() may only be entered once per instance) and mounted here."""
+
+    def __init__(self):
+        self.handler = None
+        self._cm = None
+
+    async def start(self) -> None:
+        import mcp_server
+        from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        mcp_server.configure_http_mode(f"http://127.0.0.1:{os.environ.get('PORT', '8001')}", API_KEY)
+        mcp_server.mcp.streamable_http_app(
+            streamable_http_path="/mcp",
+            transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        )
+        manager = mcp_server.mcp.session_manager
+        self._cm = manager.run()
+        await self._cm.__aenter__()
+        self.handler = StreamableHTTPASGIApp(manager)
+
+    async def stop(self) -> None:
+        self.handler = None
+        if self._cm is not None:
+            cm, self._cm = self._cm, None
+            await cm.__aexit__(None, None, None)
+
+    async def __call__(self, scope, receive, send):
+        if self.handler is None:
+            resp = JSONResponse({"detail": "MCP chưa sẵn sàng"}, status_code=503)
+            await resp(scope, receive, send)
+            return
+        await self.handler(scope, receive, send)
+
+
+mcp_gateway = _McpGateway()
+app.router.routes.append(Route("/mcp", endpoint=mcp_gateway, methods=["GET", "POST", "DELETE"]))
+
+
+@app.on_event("startup")
+async def _mcp_startup() -> None:
+    await mcp_gateway.start()
+
+
+@app.on_event("shutdown")
+async def _mcp_shutdown() -> None:
+    await mcp_gateway.stop()
 
 
 @app.get("/health")
@@ -1961,6 +2056,9 @@ def put_lexicon(body: LexiconBody, request: Request):
 def main() -> None:
     host = os.environ.get("PORT_HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8001"))
+    if netsec.requires_key(host, API_KEY):
+        print(netsec.REFUSE_MESSAGE.format(host=host), file=sys.stderr)
+        raise SystemExit(2)
     uvicorn.run(app, host=host, port=port, workers=1, log_level="info")
 
 

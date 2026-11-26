@@ -196,6 +196,7 @@ def bench(cfg: Config) -> str:
     t0 = time.perf_counter()
     resp = httpx.post(
         f"{base}/v1/audio/speech",
+        headers=daemon.auth_headers(cfg),
         json={"input": BENCH_TEXT, "voice": cfg.default_voice,
               "response_format": "wav", "sample_rate": 24000},
         timeout=None,

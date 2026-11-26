@@ -22,6 +22,8 @@ class Config:
     library_dir: str = ""  # voice pack library (e.g. VIVOS); "" = none
     webhook_secret: str = ""  # HMAC key for job webhooks (generated on first need)
     history_max: int = 500  # newest N outputs kept in history/cache
+    host: str = "127.0.0.1"  # bind address; non-loopback requires api_key
+    api_key: str = ""  # Bearer token required by every route except /health
 
 
 def load() -> Config:
@@ -65,6 +67,14 @@ def ensure_webhook_secret() -> str:
     return cfg.webhook_secret
 
 
+def generate_api_key() -> str:
+    """Create, persist and return a new API key."""
+    cfg = load()
+    cfg.api_key = secrets.token_urlsafe(32)
+    save(cfg)
+    return cfg.api_key
+
+
 def merge_recommended(current: Config, recommended: Config) -> Config:
     """Apply only the doctor-produced fields onto the user's existing config."""
     from dataclasses import replace
@@ -80,7 +90,7 @@ def merge_recommended(current: Config, recommended: Config) -> Config:
 def to_env(cfg: Config) -> dict[str, str]:
     env = {
         "PORT": str(cfg.port),
-        "PORT_HOST": "127.0.0.1",
+        "PORT_HOST": cfg.host,
         "VIZIPVOICE_DEVICE": cfg.device,
         "VIZIPVOICE_FP16": "1" if cfg.fp16 else "0",
         "VIZIPVOICE_NUM_STEP": str(cfg.num_step),
@@ -94,4 +104,6 @@ def to_env(cfg: Config) -> dict[str, str]:
         env["TQD_CHUNKER"] = cfg.chunker
     if cfg.library_dir != "":
         env["VIZIPVOICE_LIBRARY_DIR"] = cfg.library_dir
+    if cfg.api_key != "":
+        env["VIZIPVOICE_API_KEY"] = cfg.api_key
     return env

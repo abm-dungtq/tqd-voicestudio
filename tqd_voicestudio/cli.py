@@ -10,7 +10,7 @@ import time
 import sys
 from pathlib import Path
 
-from tqd_voicestudio import config, daemon, paths
+from tqd_voicestudio import config, daemon, netsec, paths
 
 
 def _error_detail(resp) -> str:
@@ -45,6 +45,11 @@ def _cmd_serve(args) -> int:
     cfg = config.load()
     if args.port:
         cfg.port = args.port
+    if getattr(args, "host", None):
+        cfg.host = args.host
+    if netsec.requires_key(cfg.host, cfg.api_key):
+        print(netsec.REFUSE_MESSAGE.format(host=cfg.host), file=sys.stderr)
+        return 2
     os.environ.update(config.to_env(cfg))
     import vizipvoice_openai_server
 
@@ -77,10 +82,10 @@ def _say_body(args, cfg) -> dict:
     return body
 
 
-def _poll_job(httpx, base: str, jid: str) -> dict:
+def _poll_job(httpx, base: str, jid: str, headers: dict) -> dict:
     last = ""
     while True:
-        info = httpx.get(f"{base}/v1/jobs/{jid}", timeout=60).json()
+        info = httpx.get(f"{base}/v1/jobs/{jid}", headers=headers, timeout=60).json()
         line = f"job {jid}: {info['status']} {info['segments_done']}/{info['segments_total']} ({info['progress']:.0%})"
         if line != last:
             print(line, file=sys.stderr)
@@ -97,17 +102,17 @@ def _cmd_say(args) -> int:
     body = _say_body(args, cfg)
     base = daemon.ensure_server(cfg)
     if args.job:
-        resp = httpx.post(f"{base}/v1/jobs", json=body, timeout=None)
+        resp = httpx.post(f"{base}/v1/jobs", json=body, headers=daemon.auth_headers(cfg), timeout=None)
         if resp.status_code != 202:
             print(_error_detail(resp), file=sys.stderr)
             return 1
-        info = _poll_job(httpx, base, resp.json()["id"])
+        info = _poll_job(httpx, base, resp.json()["id"], daemon.auth_headers(cfg))
         if info["status"] != "done":
             print(info.get("error") or f"job {info['status']}", file=sys.stderr)
             return 1
-        resp = httpx.get(f"{base}{info['audio_url']}", timeout=None)
+        resp = httpx.get(f"{base}{info['audio_url']}", headers=daemon.auth_headers(cfg), timeout=None)
     else:
-        resp = httpx.post(f"{base}/v1/audio/speech", json=body, timeout=None)
+        resp = httpx.post(f"{base}/v1/audio/speech", json=body, headers=daemon.auth_headers(cfg), timeout=None)
     if resp.status_code != 200:
         print(_error_detail(resp), file=sys.stderr)
         return 1
@@ -143,6 +148,7 @@ def _cmd_clone(args) -> int:
             f"{base}/v1/voices",
             data=data,
             files={"file": (audio.name, f)},
+            headers=daemon.auth_headers(cfg),
             timeout=None,
         )
     if not (200 <= resp.status_code < 300):
@@ -162,7 +168,7 @@ def _cmd_voices(args) -> int:
         params["gender"] = args.gender
     if args.region:
         params["region"] = args.region
-    resp = httpx.get(f"{base}/v1/voices", params=params, timeout=60)
+    resp = httpx.get(f"{base}/v1/voices", params=params, headers=daemon.auth_headers(cfg), timeout=60)
     if resp.status_code != 200:
         print(_error_detail(resp), file=sys.stderr)
         return 1
@@ -186,15 +192,15 @@ def _cmd_jobs(args) -> int:
     base = daemon.ensure_server(cfg)
     action = args.action or "list"
     if action == "list":
-        resp = httpx.get(f"{base}/v1/jobs", timeout=60)
+        resp = httpx.get(f"{base}/v1/jobs", headers=daemon.auth_headers(cfg), timeout=60)
     elif action in ("show", "cancel"):
         if not args.job_id:
             print(f"jobs {action} cần JOB_ID", file=sys.stderr)
             return 2
         if action == "show":
-            resp = httpx.get(f"{base}/v1/jobs/{args.job_id}", timeout=60)
+            resp = httpx.get(f"{base}/v1/jobs/{args.job_id}", headers=daemon.auth_headers(cfg), timeout=60)
         else:
-            resp = httpx.post(f"{base}/v1/jobs/{args.job_id}/cancel", timeout=60)
+            resp = httpx.post(f"{base}/v1/jobs/{args.job_id}/cancel", headers=daemon.auth_headers(cfg), timeout=60)
     else:
         print("action phải là list, show hoặc cancel", file=sys.stderr)
         return 2
@@ -217,11 +223,11 @@ def _cmd_import(args) -> int:
     base = daemon.ensure_server(cfg)
     source = args.source
     if source.lower().startswith(("http://", "https://")):
-        resp = httpx.post(f"{base}/v1/import", json={"url": source}, timeout=120)
+        resp = httpx.post(f"{base}/v1/import", json={"url": source}, headers=daemon.auth_headers(cfg), timeout=120)
     else:
         path = Path(source)
         with open(path, "rb") as f:
-            resp = httpx.post(f"{base}/v1/import", files={"file": (path.name, f)}, timeout=120)
+            resp = httpx.post(f"{base}/v1/import", files={"file": (path.name, f)}, headers=daemon.auth_headers(cfg), timeout=120)
     if resp.status_code != 200:
         print(_error_detail(resp), file=sys.stderr)
         return 1
@@ -239,7 +245,20 @@ def _cmd_key(args) -> int:
     if args.which == "webhook":
         print(config.ensure_webhook_secret())
         return 0
-    return 2
+    if args.which == "new":
+        print(config.generate_api_key())
+        print(
+            "Đã lưu key vào config.toml (chỉ hiện một lần). Khởi động lại server để áp dụng: "
+            "tqd-voicestudio stop rồi chạy lại lệnh bạn dùng.",
+            file=sys.stderr,
+        )
+        return 0
+    key = config.load().api_key
+    if not key:
+        print("Chưa có API key. Tạo bằng: tqd-voicestudio key new", file=sys.stderr)
+        return 1
+    print(key)
+    return 0
 
 
 def _cmd_stop(args) -> int:
@@ -279,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("serve", help="run the local server in the foreground")
     s.add_argument("--port", type=int)
+    s.add_argument("--host", help="địa chỉ bind (mặc định theo config; khác loopback cần API key)")
     s.add_argument("--env-file", help=argparse.SUPPRESS)
     s.add_argument("--log", help=argparse.SUPPRESS)
     s.set_defaults(fn=_cmd_serve)
@@ -329,6 +349,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("mcp-config", help="print MCP client configuration")
     s.add_argument("--client", choices=["claude-desktop", "cursor", "claude-code"], default="claude-desktop")
+    s.add_argument("--remote", metavar="URL", help="URL server từ xa (ví dụ http://100.x.y.z:8765): in cấu hình HTTP")
+    s.add_argument("--key-env", metavar="NAME", help="dùng biến môi trường NAME thay cho <KEY>")
+    s.add_argument("--show-key", action="store_true", help="in key thật từ config cục bộ")
     s.set_defaults(fn=_cmd_mcp_config)
 
     s = sub.add_parser("jobs", help="liệt kê / xem / hủy job")
@@ -342,7 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=_cmd_import)
 
     s = sub.add_parser("key", help="khóa bí mật")
-    s.add_argument("which", choices=["webhook"], help="webhook: in secret ký webhook")
+    s.add_argument("which", choices=["new", "show", "webhook"], help="new: tạo API key; show: in key; webhook: in secret ký webhook")
     s.set_defaults(fn=_cmd_key)
 
     s = sub.add_parser("stop", help="stop the background server")

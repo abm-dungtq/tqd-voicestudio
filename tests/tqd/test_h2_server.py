@@ -39,6 +39,9 @@ class FakeEngine:
         self.gate = None
         self.on_call = None
 
+    def list_voices(self):
+        return [{"id": v.name, "name": v.name, "kind": v.kind, "gender": None, "region": None} for v in self.voices.values()]
+
     def resolve_voice(self, name):
         if name in self.voices:
             return self.voices[name]

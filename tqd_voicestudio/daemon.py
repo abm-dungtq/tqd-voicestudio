@@ -10,12 +10,16 @@ import time
 import urllib.error
 import urllib.request
 
-from tqd_voicestudio import config, paths
+from tqd_voicestudio import config, netsec, paths
 from tqd_voicestudio.config import Config
 
 
 def base_url(cfg: Config) -> str:
-    return f"http://127.0.0.1:{cfg.port}"
+    return f"http://{netsec.connect_host(cfg.host)}:{cfg.port}"
+
+
+def auth_headers(cfg: Config) -> dict:
+    return {"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {}
 
 
 def health(cfg: Config, timeout: float = 1.0) -> dict | None:
@@ -85,6 +89,8 @@ def ensure_server(cfg: Config, wait_s: float = 300) -> str:
         return base_url(cfg)
 
     if info is None or info.get("status") != "loading":
+        if netsec.requires_key(cfg.host, cfg.api_key):
+            raise RuntimeError(netsec.REFUSE_MESSAGE.format(host=cfg.host))
         paths.home().mkdir(parents=True, exist_ok=True)
         paths.logs_dir().mkdir(parents=True, exist_ok=True)
         env = dict(os.environ | config.to_env(cfg))

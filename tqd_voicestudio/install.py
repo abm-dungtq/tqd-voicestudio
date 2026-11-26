@@ -90,6 +90,7 @@ def run(args) -> int:
         try:
             resp = httpx.post(
                 f"{base}/v1/audio/speech",
+                headers=daemon.auth_headers(rec),
                 json={"input": SMOKE_TEXT, "voice": rec.default_voice, "response_format": "wav"},
                 timeout=None,
             )

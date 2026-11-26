@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""ViZipVoice MCP server (stdio) — Vietnamese TTS tools for MCP clients.
+"""TQD-VoiceStudio MCP server — Vietnamese TTS tools for MCP clients.
 
-Bridges MCP clients (Claude Desktop, IDE agents) to the ViZipVoice
-OpenAI-compatible speech server (vizipvoice_openai_server.py).
+One set of tool definitions served over two transports:
+  * stdio  (``tqd-voicestudio mcp``): bridges a local client to the speech server;
+    audio is written to a file on this machine.
+  * Streamable HTTP mounted at ``/mcp`` inside the speech server itself (HTTP mode):
+    audio is returned inline as MCP AudioContent (<= INLINE_AUDIO_LIMIT) because the
+    client is on another machine.
 
 Environment:
   VIZIPVOICE_API_URL      Speech server base URL (default: start/reuse the local tqd-voicestudio
@@ -28,6 +32,7 @@ from typing import Any, Optional
 
 import httpx
 from mcp.server.mcpserver import MCPServer
+from mcp_types import AudioContent, ContentBlock, TextContent
 
 import tqd_voicestudio
 from tqd_voicestudio import config, daemon, paths
@@ -42,6 +47,9 @@ OUTPUT_DIR = Path(os.environ.get("VIZIPVOICE_OUTPUT_DIR") or paths.outputs_dir()
 SUPPORTED_RATES = (8000, 16000, 24000, 48000)
 SUPPORTED_FORMATS = ("wav", "pcm", "mp3", "flac", "opus")
 MAX_REFERENCE_BYTES = 25 * 1024 * 1024
+INLINE_AUDIO_LIMIT = 8 * 1024 * 1024
+HTTP_MODE = False  # True when the tools run inside the speech server (mounted at /mcp)
+_AUDIO_MIME = {"wav": "audio/wav", "mp3": "audio/mpeg", "flac": "audio/flac", "opus": "audio/ogg", "pcm": "audio/pcm"}
 
 mcp = MCPServer(
     name="tqd-voicestudio",
@@ -55,8 +63,19 @@ mcp = MCPServer(
 )
 
 
+def configure_http_mode(base_url: str, api_key: str) -> None:
+    """Called by the speech server when mounting /mcp: tools call its own REST API."""
+    global HTTP_MODE, API_URL, API_KEY
+    HTTP_MODE = True
+    API_URL = base_url.rstrip("/")
+    API_KEY = (api_key or "").strip()
+
+
 def _headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
+    key = API_KEY
+    if not key and not HTTP_MODE and not os.environ.get("VIZIPVOICE_API_URL"):
+        key = config.load().api_key
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 async def _api_url() -> str:
@@ -122,10 +141,12 @@ async def synthesize_speech(
     sample_rate: int = 48000,
     response_format: str = "wav",
     return_base64: bool = False,
-) -> str:
-    """Render Vietnamese text to speech and save it as an audio file.
+) -> list[ContentBlock]:
+    """Render Vietnamese text to speech.
 
-    Returns JSON with the output path, byte size, duration, and optional base64.
+    Over stdio the audio is saved to a local file (JSON with path, size, duration, history_id).
+    Over HTTP the audio comes back inline as audio content (up to 8 MB); the JSON text block
+    carries the history_id and the authenticated download path /v1/history/{id}/audio.
     """
     if response_format not in SUPPORTED_FORMATS:
         raise ValueError(f"response_format must be one of {SUPPORTED_FORMATS}")
@@ -151,30 +172,47 @@ async def synthesize_speech(
     log.info("synthesize_speech voice=%s format=%s rate=%d", voice_id, response_format, sample_rate)
     resp = await _request("POST", "/v1/audio/speech", json=payload)
     content = resp.content
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = f".{response_format}"
-    out_path = OUTPUT_DIR / f"vizipvoice-{uuid.uuid4().hex[:12]}{suffix}"
-    out_path.write_bytes(content)
+    history_id = resp.headers.get("x-tqd-history-id")
+    download_path = f"/v1/history/{history_id}/audio" if history_id else None
 
     result: dict[str, Any] = {
         "status": "success",
         "voice": voice_id,
         "format": response_format,
         "sample_rate": sample_rate,
-        "path": str(out_path),
         "size_bytes": len(content),
         "duration_seconds": _audio_duration_seconds(content, response_format, sample_rate),
+        "history_id": history_id,
+        "download_path": download_path,
     }
+    if HTTP_MODE:
+        blocks: list[ContentBlock] = []
+        if len(content) <= INLINE_AUDIO_LIMIT:
+            blocks.append(
+                AudioContent(
+                    type="audio",
+                    data=base64.b64encode(content).decode("ascii"),
+                    mime_type=_AUDIO_MIME.get(response_format, "application/octet-stream"),
+                )
+            )
+        else:
+            result["note"] = "Âm thanh quá lớn để trả inline; tải qua download_path (cần Bearer)."
+        blocks.append(TextContent(type="text", text=json.dumps(result, ensure_ascii=False)))
+        return blocks
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTPUT_DIR / f"vizipvoice-{uuid.uuid4().hex[:12]}.{response_format}"
+    out_path.write_bytes(content)
+    result["path"] = str(out_path)
     if return_base64:
         result["audio_base64"] = base64.b64encode(content).decode("ascii")
-    return json.dumps(result, ensure_ascii=False)
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
 
 @mcp.tool()
 async def create_voice(
     name: str,
-    reference_audio_path: str,
+    reference_audio_path: Optional[str] = None,
     ref_text: Optional[str] = None,
     gender: Optional[str] = None,
     region: Optional[str] = None,
@@ -182,8 +220,13 @@ async def create_voice(
     denoise: bool = True,
     force: bool = False,
     consent: bool = False,
+    audio_base64: Optional[str] = None,
+    filename: str = "reference.wav",
 ) -> str:
-    """Enroll a new voice from a local reference clip (3-10s, wav/mp3/flac).
+    """Enroll a new voice from a reference clip (3-10s, wav/mp3/flac).
+
+    Give the clip as `reference_audio_path` (stdio only, a file on the machine running the MCP
+    process) or as `audio_base64` + `filename` (works over HTTP too; up to 25 MB).
 
     `ref_text` is the exact transcript of the clip; when omitted the server
     transcribes it. `gender` is male|female, `region` is bac|trung|nam.
@@ -191,10 +234,23 @@ async def create_voice(
     """
     if not consent:
         raise ValueError("Cần consent=true: chỉ clone giọng khi người đó đồng ý.")
-    ref_path = Path(reference_audio_path).expanduser()
-    if not ref_path.is_file():
-        raise ValueError(f"reference audio not found: {ref_path}")
-    if ref_path.stat().st_size > MAX_REFERENCE_BYTES:
+    if audio_base64:
+        try:
+            audio_bytes = base64.b64decode(audio_base64, validate=False)
+        except Exception as exc:
+            raise ValueError("audio_base64 không hợp lệ") from exc
+        upload_name = Path(filename).name or "reference.wav"
+    elif reference_audio_path:
+        if HTTP_MODE:
+            raise ValueError("Qua HTTP không đọc được đường dẫn file: hãy gửi audio_base64 + filename.")
+        ref_path = Path(reference_audio_path).expanduser()
+        if not ref_path.is_file():
+            raise ValueError(f"reference audio not found: {ref_path}")
+        audio_bytes = ref_path.read_bytes()
+        upload_name = ref_path.name
+    else:
+        raise ValueError("Cần reference_audio_path (stdio) hoặc audio_base64 + filename.")
+    if len(audio_bytes) > MAX_REFERENCE_BYTES:
         raise ValueError("reference audio exceeds 25 MB limit")
     if ref_text is not None and not ref_text.strip():
         ref_text = None
@@ -213,11 +269,11 @@ async def create_voice(
     if region:
         form["region"] = region
 
-    log.info("create_voice name=%s ref=%s", name, ref_path.name)
+    log.info("create_voice name=%s ref=%s", name, upload_name)
     resp = await _request(
         "POST",
         "/v1/voices",
-        files={"file": (ref_path.name, ref_path.read_bytes(), "application/octet-stream")},
+        files={"file": (upload_name, audio_bytes, "application/octet-stream")},
         data=form,
     )
     return json.dumps({"status": "success", "voice": resp.json()}, ensure_ascii=False)
@@ -260,7 +316,7 @@ async def job_status(job_id: str, save_audio: bool = False) -> str:
     """Status of a job (progress, urls). With save_audio=true and a finished job, also saves the audio file."""
     resp = await _request("GET", f"/v1/jobs/{job_id}")
     info = resp.json()
-    if save_audio and info.get("status") == "done":
+    if save_audio and not HTTP_MODE and info.get("status") == "done":
         audio = await _request("GET", info["audio_url"])
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         ext = "wav" if audio.headers.get("content-type", "").endswith("wav") else "bin"
