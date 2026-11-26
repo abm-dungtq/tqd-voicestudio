@@ -66,6 +66,7 @@ from zipvoice.utils.infer import (
 )
 import vizipvoice_addons
 from vizipvoice_addons import asr as qc_asr
+from vizipvoice_addons import chunker
 from vizipvoice_addons import audio_formats, lexicon, script_voices, subtitles, voice_meta
 from vizipvoice_addons.asr import cer as qc_cer
 from vizipvoice_addons.asr import normalize_for_compare
@@ -147,6 +148,9 @@ LIBRARY_DIR = (
 CUSTOM_VOICES_DIR = paths.voices_dir()
 
 MAX_STREAMS = int(os.environ.get("VIZIPVOICE_MAX_STREAMS", "4"))
+CHUNKER_MODE = os.environ.get("TQD_CHUNKER", "legacy").strip().lower()
+if CHUNKER_MODE not in {"legacy", "v2"}:
+    raise ValueError(f"TQD_CHUNKER must be legacy|v2, got {CHUNKER_MODE}")
 QUEUE_TIMEOUT = float(os.environ.get("VIZIPVOICE_QUEUE_TIMEOUT", "180.0"))
 API_KEY = os.environ.get("VIZIPVOICE_API_KEY", "").strip()
 PCM_CHUNK_SAMPLES = 4800  # 100 ms @ 48 kHz
@@ -426,6 +430,8 @@ def parse_expressive_script(text: str, default_style: Optional[str] = "auto") ->
 
             norm_tok = preprocess_youtube_vietnamese(tok_s)
             sents = split_text_into_sentences(norm_tok)
+            if CHUNKER_MODE == "v2":
+                sents = chunker.chunk_sentences(sents)
             for s in sents:
                 s_clean = s.strip()
                 if not s_clean:
@@ -1198,6 +1204,7 @@ def health():
         "waiting": engine.waiting,
         "sample_rate": DEFAULT_OUTPUT_SR,
         "voices": len(engine.voices),
+        "chunker": CHUNKER_MODE,
     }
 
 
