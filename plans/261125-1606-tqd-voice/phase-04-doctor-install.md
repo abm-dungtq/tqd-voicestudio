@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "doctor + install + script cài"
-status: pending
+status: completed
 priority: P1
 effort: "4h"
 dependencies: [3]
@@ -107,12 +107,12 @@ dependencies: [3]
 - Commit: "Add doctor, install and one-line installers".
 
 ## Todo
-- [ ] Task 4.1 — Thu thập thông tin máy
-- [ ] Task 4.2 — Luật khuyến nghị (hàm thuần)
-- [ ] Task 4.3 — Lệnh `doctor`
-- [ ] Task 4.4 — Lệnh `install`
-- [ ] Task 4.5 — Test luật khuyến nghị
-- [ ] Task 4.6 — Script cài một lệnh
+- [x] Task 4.1 — Thu thập thông tin máy
+- [x] Task 4.2 — Luật khuyến nghị (hàm thuần)
+- [x] Task 4.3 — Lệnh `doctor`
+- [x] Task 4.4 — Lệnh `install`
+- [x] Task 4.5 — Test luật khuyến nghị
+- [x] Task 4.6 — Script cài một lệnh
 
 ## Failure Protocol
 If any Verify step does not meet its stated pass condition, STOP this phase.

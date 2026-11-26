@@ -1,9 +1,14 @@
-# AGENTS.md — ViZipVoice dev notes
+# AGENTS.md — TQD-Voice / ViZipVoice dev notes
 
-Repo: Vietnamese ZipVoice TTS (flow-matching + Vocos). Runtime layout on this
-box: server `vizipvoice_openai_server.py` uses `ROOT = D:\TTS`; model at
-`D:\TTS\models\ViZipvoice`; custom voices at `D:\TTS\voices`; API started by
-`D:\TTS\start-api.cmd` (HF_HOME=`D:\TTS\.hf-cache`, PYTHONUTF8=1, port 8001).
+Repo: Vietnamese ZipVoice TTS (flow-matching + Vocos), packaged as the `tqd-voice` CLI.
+All data directories are path-configurable via `tqd_voice/paths.py`: `TQD_VOICE_HOME`
+(default `~/.tqd-voice`) plus per-directory overrides (`VIZIPVOICE_MODEL_DIR`,
+`VIZIPVOICE_VOICES_DIR`, `VIZIPVOICE_CT2_MODEL`, `HF_HOME`, `VIZIPVOICE_LIBRARY_DIR`).
+
+Production on this box (port 8001) runs from `D:\TTS\ViZipvoice` via `D:\TTS\start-api.cmd`,
+which keeps the `D:\TTS` paths through env vars (`VIZIPVOICE_MODEL_DIR`, `VIZIPVOICE_VOICES_DIR`,
+`VIZIPVOICE_CT2_MODEL`, `VIZIPVOICE_LIBRARY_DIR`, `TQD_CHUNKER=legacy`). Develop in the
+worktree `D:\TTS\tqd-voice` (branch `tqd/v0.1`); never edit `D:\TTS\ViZipvoice`.
 
 ## Python env
 
@@ -15,13 +20,17 @@ uv pip install --python .venv/Scripts/python.exe <pkg>
 uv pip install --python .venv/Scripts/python.exe -r requirements-data.txt  # data toolkit
 ```
 
+The dev venv (`D:/TTS/ViZipvoice/.venv`) has a `vizipvoice.pth` pointing at `D:\TTS\ViZipvoice`, so
+run worktree code with `PYTHONPATH=D:/TTS/tqd-voice` (otherwise `vizipvoice_openai_server`
+resolves to the production copy). Clean-environment checks use `uv tool install` instead.
+
 Always set `PYTHONUTF8=1` (and `HF_HOME=D:/TTS/.hf-cache` for HF lookups) —
 Vietnamese text will crash cp1252 consoles otherwise.
 
 ## Tests
 
 ```bash
-PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/addons tests/tts_service -q
+PYTHONUTF8=1 .venv/Scripts/python.exe -m pytest tests/addons tests/tts_service tests/tqd -q
 ```
 
 `tests/addons/` covers the pure helpers in `vizipvoice_addons/` + data scripts.

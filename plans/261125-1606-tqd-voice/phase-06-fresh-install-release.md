@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Kiểm tra cài mới + phát hành v0.1.0"
-status: pending
+status: in-progress
 priority: P1
 effort: "3h"
 dependencies: [2, 4, 5]
@@ -63,11 +63,11 @@ Chứng minh bạn bè cài được từ GitHub và dùng được ngay: cài n
 - Verify: `gh release view v0.1.0 --repo abm-dungtq/tqd-voice --json tagName -q .tagName` in `v0.1.0`; lệnh cài bước 5 exit 0; `tqd-voice doctor` exit 0.
 
 ## Todo
-- [ ] Task 6.1 — Tài liệu
-- [ ] Task 6.2 — Cài như tool độc lập từ mã nguồn local
-- [ ] Task 6.3 — Văn bản dài ~2.700 từ
-- [ ] Task 6.4 — Đường CPU
-- [ ] Task 6.5 — Bộ test đầy đủ
+- [x] Task 6.1 — Tài liệu
+- [x] Task 6.2 — Cài như tool độc lập từ mã nguồn local
+- [x] Task 6.3 — Văn bản dài ~2.700 từ
+- [x] Task 6.4 — Đường CPU
+- [x] Task 6.5 — Bộ test đầy đủ
 - [ ] Task 6.6 — Phát hành (CẦN người dùng xác nhận trước)
 
 ## Failure Protocol

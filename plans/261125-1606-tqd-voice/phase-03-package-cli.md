@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Đóng gói Python + CLI cơ bản"
-status: pending
+status: completed
 priority: P1
 effort: "4h"
 dependencies: [1]
@@ -143,13 +143,13 @@ Repo cài được bằng `uv tool install`, cung cấp lệnh `tqd-voice` với
 - Commit: "Package as tqd-voice CLI with local server daemon".
 
 ## Todo
-- [ ] Task 3.1 — Device / fp16 / num_step cấu hình được
-- [ ] Task 3.2 — `pyproject.toml` có `[project]`
-- [ ] Task 3.3 — `tqd_voice/config.py`
-- [ ] Task 3.4 — `tqd_voice/daemon.py`
-- [ ] Task 3.5 — `tqd_voice/cli.py` và `tqd_voice/__main__.py`
-- [ ] Task 3.6 — Unit test
-- [ ] Task 3.7 — Chạy thật với venv repo
+- [x] Task 3.1 — Device / fp16 / num_step cấu hình được
+- [x] Task 3.2 — `pyproject.toml` có `[project]`
+- [x] Task 3.3 — `tqd_voice/config.py`
+- [x] Task 3.4 — `tqd_voice/daemon.py`
+- [x] Task 3.5 — `tqd_voice/cli.py` và `tqd_voice/__main__.py`
+- [x] Task 3.6 — Unit test
+- [x] Task 3.7 — Chạy thật với venv repo
 
 ## Failure Protocol
 If any Verify step does not meet its stated pass condition, STOP this phase.

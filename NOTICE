@@ -1,0 +1,16 @@
+TQD-Voice
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+TQD-Voice is based on:
+
+  * ZipVoice (https://github.com/k2-fsa/ZipVoice), Apache-2.0.
+    Source files under zipvoice/ carry "Copyright 2024 Xiaomi Corp. (authors: Wei Kang ...)"
+    and "Copyright 2025 Xiaomi Corp. (authors: Han Zhu)".
+
+  * ViZipVoice (https://github.com/iamdinhthuan/ViZipvoice), Apache-2.0,
+    the Vietnamese fine-tune of ZipVoice by iamdinhthuan.
+
+The speech model is downloaded at install time from Hugging Face
+(contextboxai/ViZipvoice, Apache-2.0, revision 7903dcb99d5a17c2e59a0ef5f7db32de4bed357b)
+and is not included in this repository. The vocoder (charactr/vocos-mel-24khz) and the
+ASR model (vinai/PhoWhisper-small) are likewise downloaded from Hugging Face under their own licenses.

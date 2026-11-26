@@ -1,7 +1,7 @@
 ---
 title: "TQD-Voice v0.1 — CLI TTS tiếng Việt tự cài, có MCP"
 description: "Biến ViZipVoice (model gốc 1860k) thành công cụ miễn phí chia sẻ qua GitHub: bạn bè cài bằng uv, doctor tự phân tích máy, chia đoạn theo nhịp 13–25 từ, MCP stdio cho agent."
-status: pending
+status: in-progress
 priority: P1
 effort: 19h
 branch: tqd/v0.1
@@ -27,12 +27,12 @@ Biến ViZipVoice (model gốc 1860k) thành công cụ miễn phí chia sẻ qu
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Repo setup: fork, hygiene, đường dẫn cấu hình](./phase-01-start.md) | Pending |
-| 2 | [Chunker v2 + eval văn bản dài](./phase-02-chunker-v2.md) | Pending |
-| 3 | [Đóng gói Python + CLI cơ bản](./phase-03-package-cli.md) | Pending |
-| 4 | [doctor + install + script cài](./phase-04-doctor-install.md) | Pending |
-| 5 | [MCP stdio qua daemon cục bộ](./phase-05-mcp-bridge.md) | Pending |
-| 6 | [Kiểm tra cài mới + phát hành v0.1.0](./phase-06-fresh-install-release.md) | Pending |
+| 1 | [Repo setup: fork, hygiene, đường dẫn cấu hình](./phase-01-start.md) | Completed |
+| 2 | [Chunker v2 + eval văn bản dài](./phase-02-chunker-v2.md) | Completed |
+| 3 | [Đóng gói Python + CLI cơ bản](./phase-03-package-cli.md) | Completed |
+| 4 | [doctor + install + script cài](./phase-04-doctor-install.md) | Completed |
+| 5 | [MCP stdio qua daemon cục bộ](./phase-05-mcp-bridge.md) | Completed |
+| 6 | [Kiểm tra cài mới + phát hành v0.1.0](./phase-06-fresh-install-release.md) | In Progress |
 
 Phụ thuộc: 1 → 2, 3; 3 → 4, 5; 2, 4, 5 → 6.
 

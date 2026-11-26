@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Chunker v2 + eval văn bản dài"
-status: pending
+status: completed
 priority: P1
 effort: "4h"
 dependencies: [1]
@@ -104,12 +104,12 @@ Eval 384 câu của model gốc theo độ dài câu: 1–4 từ lỗi 50% (CER 
 - Commit: "Add length-aware chunker v2 with long-form A/B eval".
 
 ## Todo
-- [ ] Task 2.1 — `vizipvoice_addons/chunker.py`
-- [ ] Task 2.2 — Test chunker
-- [ ] Task 2.3 — Tích hợp có cờ
-- [ ] Task 2.4 — Harness `scripts/eval/eval_longform.py`
-- [ ] Task 2.5 — Chạy A/B
-- [ ] Task 2.6 — Đặt mặc định theo quyết định
+- [x] Task 2.1 — `vizipvoice_addons/chunker.py`
+- [x] Task 2.2 — Test chunker
+- [x] Task 2.3 — Tích hợp có cờ
+- [x] Task 2.4 — Harness `scripts/eval/eval_longform.py`
+- [x] Task 2.5 — Chạy A/B
+- [x] Task 2.6 — Đặt mặc định theo quyết định
 
 ## Failure Protocol
 If any Verify step does not meet its stated pass condition, STOP this phase.

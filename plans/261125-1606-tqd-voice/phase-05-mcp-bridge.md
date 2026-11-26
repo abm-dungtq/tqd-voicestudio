@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "MCP stdio qua daemon cục bộ"
-status: pending
+status: completed
 priority: P1
 effort: "2h"
 dependencies: [3]
@@ -62,11 +62,11 @@ dependencies: [3]
 - Commit: "MCP stdio bridge backed by local tqd-voice daemon".
 
 ## Todo
-- [ ] Task 5.1 — Nối `mcp_server.py` với daemon
-- [ ] Task 5.2 — Sửa tham số tool
-- [ ] Task 5.3 — Unit test payload
-- [ ] Task 5.4 — Lệnh `mcp` và `mcp-config`
-- [ ] Task 5.5 — Smoke test qua stdio
+- [x] Task 5.1 — Nối `mcp_server.py` với daemon
+- [x] Task 5.2 — Sửa tham số tool
+- [x] Task 5.3 — Unit test payload
+- [x] Task 5.4 — Lệnh `mcp` và `mcp-config`
+- [x] Task 5.5 — Smoke test qua stdio
 
 ## Failure Protocol
 If any Verify step does not meet its stated pass condition, STOP this phase.

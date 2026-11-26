@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Repo setup: fork, hygiene, đường dẫn cấu hình"
-status: pending
+status: completed
 priority: P1
 effort: "2h"
 dependencies: []
@@ -102,13 +102,13 @@ Có fork `abm-dungtq/tqd-voice`; công việc hiện tại được chốt thàn
 
 ## Todo
 - [ ] Task 1.1 — Tạo fork trên GitHub (hành động bên ngoài, cần người dùng xác nhận trước)
-- [ ] Task 1.2 — Dọn .gitignore (trong `D:\TTS\ViZipvoice`)
-- [ ] Task 1.3 — Commit nền trong thư mục production (không đổi nội dung file)
-- [ ] Task 1.4 — Tạo worktree phát triển
-- [ ] Task 1.5 — Module đường dẫn `tqd_voice/paths.py`
-- [ ] Task 1.6 — Server, ASR và script dùng đường dẫn mới
-- [ ] Task 1.7 — Giữ production trên máy này
-- [ ] Task 1.8 — Test đường dẫn
+- [x] Task 1.2 — Dọn .gitignore (trong `D:\TTS\ViZipvoice`)
+- [x] Task 1.3 — Commit nền trong thư mục production (không đổi nội dung file)
+- [x] Task 1.4 — Tạo worktree phát triển
+- [x] Task 1.5 — Module đường dẫn `tqd_voice/paths.py`
+- [x] Task 1.6 — Server, ASR và script dùng đường dẫn mới
+- [x] Task 1.7 — Giữ production trên máy này
+- [x] Task 1.8 — Test đường dẫn
 - [ ] Task 1.9 — Commit và đẩy nhánh phát triển (push cần người dùng xác nhận)
 
 ## Failure Protocol
