@@ -82,19 +82,32 @@ def encode_pcm16(pcm_bytes: bytes, sr: int, fmt: str) -> Tuple[bytes, str]:
     raise ValueError(f"unsupported audio format {fmt!r}; expected one of {_FORMATS}")
 
 
+MAX_DECODE_DURATION_S = 600.0
+
+
+def _check_decoded_duration(wav, sr: int):
+    duration = len(wav) / float(max(int(sr), 1))
+    if duration > MAX_DECODE_DURATION_S:
+        raise ValueError("Âm thanh vượt quá giới hạn 10 phút (600 giây).")
+
+
 def decode_audio(data: bytes):
     """Decode arbitrary audio bytes to (mono float32 ndarray, sample_rate).
 
-    Tries soundfile first, then an ffmpeg pipe. Raises ValueError when undecodable.
+    Tries soundfile first, then an ffmpeg pipe. Raises ValueError when undecodable
+    or when the decoded audio exceeds 10 minutes.
     """
     import numpy as np
     import soundfile as sf
 
     try:
         wav, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
-        return wav.mean(axis=1).astype(np.float32), int(sr)
     except Exception:
         pass
+    else:
+        mono = wav.mean(axis=1).astype(np.float32)
+        _check_decoded_duration(mono, int(sr))
+        return mono, int(sr)
     exe = shutil.which(FFMPEG)
     if not exe:
         raise ValueError("không giải mã được file âm thanh (và không có ffmpeg để thử lại)")
@@ -108,4 +121,6 @@ def decode_audio(data: bytes):
         wav, sr = sf.read(io.BytesIO(proc.stdout), dtype="float32", always_2d=True)
     except Exception as exc:
         raise ValueError("không giải mã được file âm thanh") from exc
-    return wav.mean(axis=1).astype(np.float32), int(sr)
+    mono = wav.mean(axis=1).astype(np.float32)
+    _check_decoded_duration(mono, int(sr))
+    return mono, int(sr)

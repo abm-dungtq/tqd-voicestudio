@@ -231,13 +231,13 @@ def live(monkeypatch, tmp_path):
         srv._JOBS.stop()
 
 
-async def _mcp(url, fn):
+async def _mcp(url, fn, path="/mcp"):
     import httpx2
     from mcp import Client
     from mcp.client.streamable_http import streamable_http_client
 
     async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {KEY}"}, timeout=60) as http:
-        async with Client(streamable_http_client(url + "/mcp", http_client=http)) as client:
+        async with Client(streamable_http_client(url + path, http_client=http)) as client:
             return await fn(client)
 
 
@@ -250,6 +250,35 @@ def _blocks(result):
 def test_mcp_http_requires_key(live):
     r = httpx.post(live + "/mcp", json={})
     assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+
+
+def test_mcp_trailing_slash_behaves_the_same_and_client_accepts_it(live):
+    h = {"Authorization": f"Bearer {KEY}"}
+    plain = httpx.post(live + "/mcp", json={}, headers=h)
+    slash = httpx.post(live + "/mcp/", json={}, headers=h)
+    assert slash.status_code == plain.status_code
+
+    async def run(client):
+        return {t.name for t in (await client.list_tools()).tools}
+
+    tools = asyncio.run(_mcp(live, run, path="/mcp/"))
+    assert "list_voices" in tools
+
+
+def test_auth_middleware_rejects_websocket_scope_without_calling_app():
+    called = False
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(srv.BearerAuthMiddleware(app)({"type": "websocket"}, None, send))
+    assert not called and sent == [{"type": "websocket.close", "code": 1008}]
 
 
 def test_mcp_http_tools_audio_inline_then_path_only(live, monkeypatch):

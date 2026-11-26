@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import io
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -92,6 +93,7 @@ def env(monkeypatch, tmp_path):
     mgr = tqd_jobs.JobManager(
         store, tmp_path / "jobs", render=srv._job_render, assemble=srv._job_assemble,
         webhook_secret=config.ensure_webhook_secret, backoff=(0, 0, 0),
+        jobs_max=lambda: config.load().jobs_max,
     )
     monkeypatch.setattr(srv, "_JOBS", mgr)
     client = TestClient(srv.app)
@@ -116,6 +118,16 @@ def wait_job(c, jid, status=("done", "failed", "canceled"), timeout=15):
     raise AssertionError(f"job did not finish: {j}")
 
 
+def wait_job_attempts(c, jid, count=1, timeout=8):
+    end = time.time() + timeout
+    while time.time() < end:
+        attempts = c.get(f"/v1/jobs/{jid}").json()["webhook_attempts"]
+        if len(attempts) >= count:
+            return attempts
+        time.sleep(0.05)
+    raise AssertionError(f"webhook attempts did not reach {count}: {attempts}")
+
+
 # ---- cache + history ----
 def test_cache_miss_hit_bypass(env):
     c, eng, _ = env
@@ -128,6 +140,86 @@ def test_cache_miss_hit_bypass(env):
     r3 = speech(c, cache=False)
     assert r3.headers["x-tqd-cache"] == "miss" and len(eng.calls) == 2
     assert speech(c, speed=1.2).headers["x-tqd-cache"] == "miss"
+
+
+def test_cache_false_never_populates_cache(env):
+    c, eng, _ = env
+    text = "Câu không được ghi cache"
+    r1 = speech(c, input=text, cache=False)
+    assert r1.status_code == 200 and r1.headers["x-tqd-cache"] == "miss"
+    rows = [r for r in srv.get_store().list_history() if r["text"] == text]
+    assert len(rows) == 1 and srv.get_store().get_history(rows[0]["id"])["cache_key"] == ""
+    r2 = speech(c, input=text)
+    assert r2.headers["x-tqd-cache"] == "miss"
+    r3 = speech(c, input=text)
+    assert r3.headers["x-tqd-cache"] == "hit"
+    assert len(eng.calls) == 2
+
+
+def test_cache_invalidated_by_voice_reenrollment(env):
+    c, eng, tmp = env
+    voice_dir = tmp / "enrolled-voices"
+    voice_dir.mkdir()
+    counter = {"n": 0}
+
+    def enroll(name, wav_bytes, prompt_text, description, force, gender, region, auto_transcribe):
+        counter["n"] += 1
+        wav_p = voice_dir / f"{name}.wav"
+        txt_p = voice_dir / f"{name}.txt"
+        # Append one byte per enrollment so size differs even if the mtime granularity
+        # cooperates poorly on a fast test machine.
+        wav_p.write_bytes(wav_bytes + bytes([counter["n"]]))
+        txt_p.write_text(prompt_text or "lời nhắc", encoding="utf-8")
+        ns = time.time_ns() + counter["n"] * 1000
+        os.utime(wav_p, ns=(ns, ns))
+        os.utime(txt_p, ns=(ns, ns))
+        entry = SimpleNamespace(
+            name=name, kind="custom", wav_path=wav_p, prompt_text=txt_p.read_text(encoding="utf-8"),
+            description=description or "fake", transcript_source="user", gender=gender, region=region,
+        )
+        eng.voices[name] = entry
+        return entry
+
+    eng.enroll_voice = enroll
+    data = {"name": "ReEnroll", "consent": "true", "prompt_text": "lời nhắc"}
+    r = c.post("/v1/voices", files={"file": ("a.wav", wav_bytes(_tone(1, 200)), "audio/wav")}, data=data)
+    assert r.status_code == 201, r.text
+    assert speech(c, voice="ReEnroll").headers["x-tqd-cache"] == "miss"
+    assert speech(c, voice="ReEnroll").headers["x-tqd-cache"] == "hit"
+    calls_before = len(eng.calls)
+    data["force"] = "true"
+    r = c.post("/v1/voices", files={"file": ("a.wav", wav_bytes(_tone(1, 200)), "audio/wav")}, data=data)
+    assert r.status_code == 201, r.text
+    assert speech(c, voice="ReEnroll").headers["x-tqd-cache"] == "miss"
+    assert len(eng.calls) == calls_before + 1
+
+
+def test_missing_cached_file_falls_back_to_rerender(env, monkeypatch):
+    c, eng, _ = env
+    text = "Câu cache bị mất file"
+    first = speech(c, input=text)
+    assert first.headers["x-tqd-cache"] == "miss"
+    store = srv.get_store()
+    row = store.get_history(first.headers["x-tqd-history-id"])
+    os.unlink(row["audio_path"])
+    monkeypatch.setattr(store, "find_cached", lambda key: row)
+    second = speech(c, input=text)
+    assert second.status_code == 200 and second.headers["x-tqd-cache"] == "miss"
+    assert len(eng.calls) == 2
+
+
+def test_prune_history_preserves_rows_referenced_by_jobs(env):
+    c, _, _ = env
+    old = speech(c, input="Kết quả job cần giữ").headers["x-tqd-history-id"]
+    middle = speech(c, input="Kết quả giữa").headers["x-tqd-history-id"]
+    newest = speech(c, input="Kết quả mới nhất").headers["x-tqd-history-id"]
+    store = srv.get_store()
+    jid = store.add_job({"input": "x"}, [{"voice": "Alpha", "text": "x", "join": None}], None, True)
+    store.update_job(jid, status="done", history_id=old, finished_at=time.time())
+    store.prune_history(1)
+    remaining = {r["id"] for r in store.list_history()}
+    assert old in remaining and newest in remaining and middle not in remaining
+    assert os.path.exists(store.get_history(old)["audio_path"])
 
 
 def test_cache_invalidated_by_lexicon_change(env):
@@ -259,8 +351,9 @@ def test_music_upload_list_delete_and_mix(env):
 
 # ---- jobs ----
 class Receiver:
-    def __init__(self, statuses):
+    def __init__(self, statuses, delay=0.0):
         self.statuses = list(statuses)
+        self.delay = delay
         self.requests = []
         outer = self
 
@@ -268,6 +361,8 @@ class Receiver:
             def do_POST(self):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 outer.requests.append((dict(self.headers), body))
+                if outer.delay:
+                    time.sleep(outer.delay)
                 code = outer.statuses[min(len(outer.requests) - 1, len(outer.statuses) - 1)]
                 self.send_response(code)
                 self.end_headers()
@@ -310,7 +405,7 @@ def test_job_lifecycle_webhook_signature_and_downloads(env):
         assert {k.lower(): v for k, v in headers.items()}["x-tqd-signature"] == expect
         payload = json.loads(body)
         assert payload["event"] == "job.done" and payload["job"]["id"] == jid
-        assert wait_job(c, jid)["webhook_attempts"][0]["status"] == 200
+        assert wait_job_attempts(c, jid)[0]["status"] == 200
     finally:
         rx.close()
 
@@ -334,12 +429,73 @@ def test_webhook_three_attempts_on_500(env):
         end = time.time() + 5
         while len(rx.requests) < 3 and time.time() < end:
             time.sleep(0.05)
-        time.sleep(0.2)
         assert len(rx.requests) == 3
-        attempts = wait_job(c, jid)["webhook_attempts"]
+        attempts = wait_job_attempts(c, jid, 3)
         assert [a["status"] for a in attempts] == [500, 500, 500]
     finally:
         rx.close()
+
+
+def test_done_job_deletes_segment_artifacts_but_keeps_final_audio(env):
+    c, _, tmp = env
+    jid = c.post("/v1/jobs", json={"input": "Đoạn một.\n\nĐoạn hai.", "voice": "Alpha"}).json()["id"]
+    job = wait_job(c, jid)
+    assert job["status"] == "done"
+    job_dir = tmp / "jobs" / jid
+    assert not list(job_dir.glob("seg-*.wav")) and not list(job_dir.glob("seg-*.json"))
+    hist = srv.get_store().get_history(job["history_id"])
+    assert hist and os.path.isfile(hist["audio_path"]) and os.path.getsize(hist["audio_path"]) > 44
+
+
+def test_failed_job_keeps_segment_artifacts(env):
+    c, eng, tmp = env
+    state = {"calls": 0}
+
+    def fail_after_first(text):
+        state["calls"] += 1
+        if state["calls"] > 1:
+            raise RuntimeError("hỏng ở đoạn hai")
+
+    eng.on_call = fail_after_first
+    jid = c.post("/v1/jobs", json={"input": "Đoạn một.\n\nĐoạn hai.", "voice": "Alpha"}).json()["id"]
+    assert wait_job(c, jid)["status"] == "failed"
+    job_dir = tmp / "jobs" / jid
+    assert (job_dir / "seg-0000.wav").is_file() and (job_dir / "seg-0000.json").is_file()
+
+
+def test_slow_webhook_does_not_block_job_worker(env):
+    c, _, _ = env
+    rx = Receiver([200], delay=5.0)
+    try:
+        start = time.time()
+        j1 = c.post("/v1/jobs", json={"input": "Việc một", "voice": "Alpha", "webhook_url": rx.url}).json()["id"]
+        assert wait_job(c, j1, timeout=2)["status"] == "done"
+        j2 = c.post("/v1/jobs", json={"input": "Việc hai", "voice": "Alpha"}).json()["id"]
+        assert wait_job(c, j2, timeout=2)["status"] == "done"
+        assert time.time() - start < 2.0
+        end = time.time() + 8
+        while not rx.requests and time.time() < end:
+            time.sleep(0.05)
+        assert rx.requests, "webhook delivery never happened"
+        assert wait_job_attempts(c, j1)[0]["status"] == 200
+    finally:
+        rx.close()
+
+
+def test_jobs_pruned_to_configured_terminal_cap(env):
+    c, _, _ = env
+    cfg = config.load()
+    cfg.jobs_max = 2
+    config.save(cfg)
+    ids = []
+    for i in range(4):
+        jid = c.post("/v1/jobs", json={"input": f"Việc số {i}", "voice": "Alpha"}).json()["id"]
+        wait_job(c, jid)
+        ids.append(jid)
+    rows = c.get("/v1/jobs").json()["data"]
+    assert len(rows) == 2
+    assert {r["id"] for r in rows} == set(ids[-2:])
+    assert srv.get_store().get_job(ids[0]) is None and srv.get_store().get_job(ids[1]) is None
 
 
 def test_job_cancel_running_and_queued(env):
@@ -396,6 +552,42 @@ def test_clone_requires_consent(env):
     r = c.post("/v1/voices", files={"file": ("a.wav", wav_bytes(_tone(1, 200)), "audio/wav")},
                data={"name": "x", "consent": "false"})
     assert r.status_code == 400
+
+
+def test_voice_name_brackets_are_rejected():
+    fake = SimpleNamespace(voices={})
+    for name in ("bad[name", "bad]name"):
+        with pytest.raises(ValueError, match="bracket"):
+            srv.ViZipVoiceEngine.enroll_voice(fake, name, b"x", prompt_text="lời")
+
+
+def test_upload_size_caps(env):
+    c, _, _ = env
+    too_big_25 = b"x" * (25 * 1024 * 1024 + 1)
+    r = c.post("/v1/import", files={"file": ("big.txt", too_big_25, "text/plain")})
+    assert r.status_code == 413 and "25 MB" in r.json()["detail"]
+    r = c.post(
+        "/v1/voices",
+        files={"file": ("big.wav", too_big_25, "audio/wav")},
+        data={"name": "big", "consent": "true", "prompt_text": "lời"},
+    )
+    assert r.status_code == 413 and "25 MB" in r.json()["detail"]
+    too_big_50 = b"x" * (50 * 1024 * 1024 + 1)
+    r = c.post("/v1/music", files={"file": ("big.wav", too_big_50, "audio/wav")})
+    assert r.status_code == 413 and "50 MB" in r.json()["detail"]
+
+
+def test_decoded_audio_duration_cap_for_music_and_clone(env, monkeypatch, tmp_path):
+    c, _, _ = env
+    sr = 1000
+    long_wav = wav_bytes(np.zeros(int(601 * sr), dtype=np.float32), sr=sr)
+    r = c.post("/v1/music", files={"file": ("long.wav", long_wav, "audio/wav")})
+    assert r.status_code == 400 and "10 phút" in r.json()["detail"]
+
+    monkeypatch.setattr(srv, "CUSTOM_VOICES_DIR", tmp_path / "voices")
+    fake = SimpleNamespace(voices={})
+    with pytest.raises(ValueError, match="10 phút"):
+        srv.ViZipVoiceEngine.enroll_voice(fake, "LongVoice", long_wav, prompt_text="lời")
 
 
 # ---- import ----

@@ -819,16 +819,15 @@ class ViZipVoiceEngine:
         name = nfc(name)
         if not name:
             raise ValueError("voice name must not be empty")
-        if any(c in name for c in '/\\:*?"<>|') or ".." in name:
-            raise ValueError("voice name must not contain path characters")
+        if any(c in name for c in '/\\:*?"<>|[]') or ".." in name:
+            raise ValueError("voice name must not contain path or tag bracket characters")
         if name in self.voices and not force:
             raise FileExistsError(f"voice {name!r} already exists")
 
         CUSTOM_VOICES_DIR.mkdir(parents=True, exist_ok=True)
-        # Decode and save as 24kHz mono wav for fast loading
-        data, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        if data.ndim > 1:
-            data = data.mean(axis=1)
+        # Decode and save as 24kHz mono wav for fast loading. decode_audio also
+        # enforces the 10-minute upload duration ceiling before any clipping.
+        data, sr = audio_formats.decode_audio(wav_bytes)
         tensor = torch.from_numpy(data).unsqueeze(0)
         if sr != NATIVE_SR:
             tensor = torchaudio.functional.resample(tensor, sr, NATIVE_SR)
@@ -1293,7 +1292,18 @@ class BearerAuthMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not API_KEY or is_open_route(scope["method"], scope["path"]):
+        scope_type = scope["type"]
+        if scope_type == "lifespan":
+            await self.app(scope, receive, send)
+            return
+        if scope_type != "http":
+            # No non-http application routes exist. Never let an unknown/websocket
+            # scope bypass authentication merely because it is not HTTP.
+            if scope_type == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+                return
+            raise RuntimeError(f"unsupported ASGI scope type {scope_type!r}")
+        if not API_KEY or is_open_route(scope["method"], scope["path"]):
             await self.app(scope, receive, send)
             return
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
@@ -1351,6 +1361,7 @@ class _McpGateway:
 
 mcp_gateway = _McpGateway()
 app.router.routes.append(Route("/mcp", endpoint=mcp_gateway, methods=["GET", "POST", "DELETE"]))
+app.router.routes.append(Route("/mcp/", endpoint=mcp_gateway, methods=["GET", "POST", "DELETE"]))
 
 
 @app.on_event("startup")
@@ -1411,6 +1422,38 @@ def list_voices(
     return {"object": "list", "data": data}
 
 
+def _read_fileobj_capped(fileobj, limit_bytes: int, error: str) -> bytes:
+    """Read a binary file object incrementally, rejecting as soon as limit is exceeded."""
+    chunks: List[bytes] = []
+    total = 0
+    while True:
+        remaining = limit_bytes + 1 - total
+        chunk = fileobj.read(min(1024 * 1024, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > limit_bytes:
+            raise HTTPException(413, error)
+    return b"".join(chunks)
+
+
+async def _read_upload_capped(upload, limit_bytes: int, error: str) -> bytes:
+    """Async variant for Starlette UploadFile objects."""
+    chunks: List[bytes] = []
+    total = 0
+    while True:
+        remaining = limit_bytes + 1 - total
+        chunk = await upload.read(min(1024 * 1024, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > limit_bytes:
+            raise HTTPException(413, error)
+    return b"".join(chunks)
+
+
 @app.post("/v1/voices", status_code=201)
 def create_voice(
     request: Request,
@@ -1437,11 +1480,9 @@ def create_voice(
     if name_clean in engine.voices and not force:
         raise HTTPException(409, f"voice {name_clean!r} already exists")
 
-    raw = file.file.read()
+    raw = _read_fileobj_capped(file.file, 25 * 1024 * 1024, "reference audio exceeds 25 MB limit")
     if not raw:
         raise HTTPException(400, "empty audio file")
-    if len(raw) > 25 * 1024 * 1024:
-        raise HTTPException(413, "reference audio exceeds 25 MB limit")
 
     resolved_prompt = (ref_text or prompt_text).strip()
     engine.acquire()
@@ -1526,6 +1567,7 @@ def get_jobs() -> tqd_jobs.JobManager:
                 render=_job_render,
                 assemble=_job_assemble,
                 webhook_secret=tqd_config.ensure_webhook_secret,
+                jobs_max=lambda: tqd_config.load().jobs_max,
             )
         return _JOBS
 
@@ -1548,11 +1590,75 @@ def _lexicon_hash() -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def _voice_content_fingerprint(entry: VoiceEntry) -> str:
+    """Fingerprint the enrollment inputs currently backing a voice.
+
+    File content itself is not hashed (prompt files are small but audio may not be);
+    mtime_ns+size is sufficient for enrollment invalidation because enrollment always
+    rewrites both files. The resolved prompt text is mixed in as a content fallback for
+    in-memory/test entries without backing files.
+    """
+    h = hashlib.sha256()
+    wav_value = getattr(entry, "wav_path", None)
+    candidates: List[Path] = []
+    if wav_value:
+        wav = Path(wav_value)
+        candidates.extend([
+            wav,
+            wav.with_suffix(".txt"),
+            wav.parent / "ref.txt",
+            CUSTOM_VOICES_DIR / f"{getattr(entry, 'name', '')}.txt",
+        ])
+    seen = set()
+    for path in candidates:
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            st = path.stat()
+            h.update(f"{path}\0{st.st_mtime_ns}\0{st.st_size}\n".encode("utf-8", "surrogateescape"))
+        except OSError:
+            h.update(f"{path}\0missing\n".encode("utf-8", "surrogateescape"))
+    h.update(str(getattr(entry, "prompt_text", "") or "").encode("utf-8"))
+    return h.hexdigest()
+
+
+def _request_voice_fingerprints(req: SpeechRequest) -> List[List[str]]:
+    """Return deterministic [requested voice, enrollment fingerprint] pairs."""
+    try:
+        text = _prepare_text(req.input, req.cast)
+    except HTTPException:
+        text = req.input
+    try:
+        runs = script_voices.split_voice_runs(text, req.voice)
+    except Exception:
+        runs = []
+    names: List[str] = []
+    for voice_name, _run_text in runs or [(req.voice, text)]:
+        if voice_name not in names:
+            names.append(voice_name)
+    out: List[List[str]] = []
+    for voice_name in names:
+        entry = None
+        if engine is not None:
+            try:
+                entry = engine.resolve_voice(voice_name)
+            except KeyError:
+                entry = None
+        fp = _voice_content_fingerprint(entry) if entry is not None else hashlib.sha256(
+            f"missing:{voice_name}".encode("utf-8")
+        ).hexdigest()
+        out.append([voice_name, fp])
+    return out
+
+
 def _cache_key(req: SpeechRequest, kind: str) -> str:
     payload = {
         "kind": kind,
         "input": req.input,
         "voice": req.voice,
+        "voice_fingerprints": _request_voice_fingerprints(req),
         "speed": req.speed,
         "style": req.style,
         "model": req.model,
@@ -1767,13 +1873,20 @@ def _produce(req: SpeechRequest, kind: str) -> Tuple[dict, Dict[str, str]]:
     if req.sample_rate not in SUPPORTED_RATES:
         raise HTTPException(400, f"sample_rate must be one of {SUPPORTED_RATES}")
     store = get_store()
-    key = _cache_key(req, kind)
+    key = _cache_key(req, kind) if req.cache else ""
     headers = {"X-Sample-Rate": str(req.sample_rate)}
     if req.cache:
         row = store.find_cached(key)
         if row:
-            headers.update({"X-TQD-Cache": "hit", "X-TQD-History-Id": row["id"]})
-            return _row_to_output(row), headers
+            try:
+                out = _row_to_output(row)
+            except FileNotFoundError:
+                # The row can win the existence check and then lose a deletion race
+                # before its bytes are read. Treat that exactly like a cache miss.
+                pass
+            else:
+                headers.update({"X-TQD-Cache": "hit", "X-TQD-History-Id": row["id"]})
+                return out, headers
 
     assert engine is not None
     engine.acquire()
@@ -1811,7 +1924,8 @@ def _job_render(request: dict, seg: dict):
 def _job_assemble(request: dict, wav: np.ndarray, segments: List[dict], pauses_: List[Tuple[int, int]], subs: bool) -> str:
     req = SpeechRequest(**request)
     x, segments = _finalize_audio(req, wav, segments, pauses_)
-    return _store_output(req, "job", x, segments, _cache_key(req, "job"))["history_id"]
+    key = _cache_key(req, "job") if req.cache else ""
+    return _store_output(req, "job", x, segments, key)["history_id"]
 
 
 @app.post("/v1/audio/speech")
@@ -2013,11 +2127,9 @@ def list_ratings(request: Request, format: str = "json"):
 @app.post("/v1/music", status_code=201)
 def upload_music(request: Request, file: UploadFile = File(...), name: str = Form("")):
     _check_auth(request)
-    raw = file.file.read()
+    raw = _read_fileobj_capped(file.file, 50 * 1024 * 1024, "nhạc nền vượt quá giới hạn 50 MB")
     if not raw:
         raise HTTPException(400, "empty audio file")
-    if len(raw) > 50 * 1024 * 1024:
-        raise HTTPException(413, "nhạc nền vượt quá giới hạn 50 MB")
     try:
         wav, sr = audio_formats.decode_audio(raw)
     except ValueError as exc:
@@ -2064,7 +2176,7 @@ async def import_text(request: Request):
         upload = form.get("file")
         if upload is None or not hasattr(upload, "read"):
             raise HTTPException(400, "cần file (.txt .md .docx .pdf) hoặc JSON {url}")
-        data = await upload.read()
+        data = await _read_upload_capped(upload, 25 * 1024 * 1024, "file tải lên vượt quá giới hạn 25 MB")
         return await run_in_threadpool(importers.import_file, upload.filename or "", data)
     except importers.MissingDependency as exc:
         raise HTTPException(501, str(exc)) from exc
