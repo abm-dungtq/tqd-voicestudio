@@ -80,3 +80,32 @@ def encode_pcm16(pcm_bytes: bytes, sr: int, fmt: str) -> Tuple[bytes, str]:
         data = _ffmpeg_encode(pcm_bytes, sr, ["-codec:a", "flac", "-f", "flac"])
         return data, "audio/flac"
     raise ValueError(f"unsupported audio format {fmt!r}; expected one of {_FORMATS}")
+
+
+def decode_audio(data: bytes):
+    """Decode arbitrary audio bytes to (mono float32 ndarray, sample_rate).
+
+    Tries soundfile first, then an ffmpeg pipe. Raises ValueError when undecodable.
+    """
+    import numpy as np
+    import soundfile as sf
+
+    try:
+        wav, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+        return wav.mean(axis=1).astype(np.float32), int(sr)
+    except Exception:
+        pass
+    exe = shutil.which(FFMPEG)
+    if not exe:
+        raise ValueError("không giải mã được file âm thanh (và không có ffmpeg để thử lại)")
+    proc = subprocess.run(
+        [exe, "-v", "error", "-i", "pipe:0", "-f", "wav", "-ac", "1", "pipe:1"],
+        input=data, capture_output=True,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        raise ValueError("không giải mã được file âm thanh")
+    try:
+        wav, sr = sf.read(io.BytesIO(proc.stdout), dtype="float32", always_2d=True)
+    except Exception as exc:
+        raise ValueError("không giải mã được file âm thanh") from exc
+    return wav.mean(axis=1).astype(np.float32), int(sr)
