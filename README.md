@@ -12,19 +12,19 @@ nhưng chậm; cần khoảng 3 GB ổ đĩa.
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/abm-dungtq/tqd-voice/v0.1.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.ps1 | iex
 ```
 
 Linux:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voice/v0.1.0/install.sh | bash
+curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.sh | bash
 ```
 
 Hoặc cài thủ công (cần [uv](https://docs.astral.sh/uv/)):
 
 ```bash
-uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@v0.1.0"
+uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0"
 tqd-voice doctor
 tqd-voice install
 ```

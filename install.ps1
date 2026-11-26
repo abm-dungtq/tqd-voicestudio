@@ -4,7 +4,7 @@
 )
 
 $commands = @(
-    "uv tool install --python 3.12 --torch-backend=auto `"git+https://github.com/abm-dungtq/tqd-voice@$Ref`"",
+    "uv tool install --python 3.12 --torch-backend=auto `"git+https://github.com/abm-dungtq/tqd-voicestudio@$Ref`"",
     "& (Join-Path (uv tool dir --bin) 'tqd-voice.exe') doctor",
     "& (Join-Path (uv tool dir --bin) 'tqd-voice.exe') install"
 )
@@ -19,7 +19,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     return
 }
 
-uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@$Ref"
+uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@$Ref"
 if ($LASTEXITCODE -ne 0) { return }
 
 uv tool update-shell | Out-Null

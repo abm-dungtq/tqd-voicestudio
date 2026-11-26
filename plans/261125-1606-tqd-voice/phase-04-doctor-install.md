@@ -52,7 +52,7 @@ dependencies: [3]
   1. `cuda_available` và `vram >= 6` → `device="cuda", fp16=True, max_streams = 4 if vram >= 10 else 2`; ok `"GPU {name} {vram:.0f} GB"`.
   2. `cuda_available` và `4 <= vram < 6` → `cuda, fp16=True, max_streams=1`; warn `"VRAM thấp, chỉ chạy 1 luồng"`.
   3. `cuda_available` và `vram < 4` → `device="cpu", fp16=False, max_streams=1`; warn `"VRAM dưới 4 GB, chuyển sang CPU"`.
-  4. không `cuda_available`, có `nvidia_smi`, `torch_cuda is None` → `cpu, fp16=False, max_streams=1`; error `"Máy có GPU NVIDIA (driver {driver}) nhưng PyTorch là bản CPU"`, fix `"uv tool install --reinstall --python 3.12 --torch-backend=auto git+https://github.com/abm-dungtq/tqd-voice@v0.1.0"`.
+  4. không `cuda_available`, có `nvidia_smi`, `torch_cuda is None` → `cpu, fp16=False, max_streams=1`; error `"Máy có GPU NVIDIA (driver {driver}) nhưng PyTorch là bản CPU"`, fix `"uv tool install --reinstall --python 3.12 --torch-backend=auto git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0"`.
   5. không `cuda_available`, có `nvidia_smi`, `torch_cuda` khác None → `cpu`; error `"PyTorch CUDA {torch_cuda} không chạy được với driver {driver}"`, fix `"Cập nhật driver NVIDIA mới nhất, hoặc cài lại với --torch-backend=auto"`.
   6. không GPU → `cpu, fp16=False, max_streams=1`; warn `"Không có GPU NVIDIA: chạy CPU, chậm. Đo tốc độ bằng: tqd-voice doctor --bench"`.
   7. `disk_free_gb < 3` → error `"Ổ đĩa còn {x:.1f} GB, cần ít nhất 3 GB"`.
@@ -101,7 +101,7 @@ dependencies: [3]
 ### Task 4.6 — Script cài một lệnh
 - Target: `install.ps1`, `install.sh` (gốc repo).
 - Steps:
-  - `install.ps1` tham số `[string]$Ref = "v0.1.0"`, `[switch]$DryRun`. Nếu `Get-Command uv` không có → in `Chưa có uv. Cài bằng: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` rồi `exit 1`. Ba lệnh: `uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@$Ref"`, `tqd-voice doctor`, `tqd-voice install`. `-DryRun` chỉ in ba lệnh. Dừng ngay khi một lệnh trả mã khác 0 (trừ `doctor`: in cảnh báo rồi vẫn chạy `install`, vì `install` tự chặn khi có lỗi).
+  - `install.ps1` tham số `[string]$Ref = "v0.1.0"`, `[switch]$DryRun`. Nếu `Get-Command uv` không có → in `Chưa có uv. Cài bằng: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` rồi `exit 1`. Ba lệnh: `uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@$Ref"`, `tqd-voice doctor`, `tqd-voice install`. `-DryRun` chỉ in ba lệnh. Dừng ngay khi một lệnh trả mã khác 0 (trừ `doctor`: in cảnh báo rồi vẫn chạy `install`, vì `install` tự chặn khi có lỗi).
   - `install.sh` tương đương (`set -euo pipefail`, `REF="${TQD_REF:-v0.1.0}"`, cờ `--dry-run`, gợi ý uv `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 - Verify: `powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun` exit 0 và in đúng 3 dòng lệnh có `--torch-backend=auto`; `bash -n install.sh` exit 0; `bash install.sh --dry-run` exit 0 và in 3 dòng lệnh.
 - Commit: "Add doctor, install and one-line installers".

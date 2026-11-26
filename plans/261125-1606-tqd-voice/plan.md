@@ -17,7 +17,7 @@ created: 2026-11-25
 Biến ViZipVoice (model gốc 1860k) thành công cụ miễn phí chia sẻ qua GitHub: bạn bè cài bằng `uv`, `tqd-voice doctor` tự phân tích máy, bộ chia đoạn gom văn bản thành đoạn 13–25 từ, và MCP stdio cho agent. Repo là fork của `iamdinhthuan/ViZipvoice` dưới tài khoản `abm-dungtq`, đổi tên thành `tqd-voice`.
 
 ## Contract (đã chốt với người dùng)
-- **Outcome:** `uv tool install --torch-backend=auto git+https://github.com/abm-dungtq/tqd-voice@v0.1.0` rồi `tqd-voice install` → dùng được `say`, `clone`, `voices`, `serve`, `mcp` trên máy bạn bè.
+- **Outcome:** `uv tool install --torch-backend=auto git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0` rồi `tqd-voice install` → dùng được `say`, `clone`, `voices`, `serve`, `mcp` trên máy bạn bè.
 - **Constraints:** chỉ model gốc `contextboxai/ViZipvoice` (Apache-2.0, revision `7903dcb99d5a17c2e59a0ef5f7db32de4bed357b`); server chỉ nghe `127.0.0.1`; giữ API kiểu OpenAI; production cổng 8001 trên máy này không bị đổi hành vi; mục tiêu chính Windows/Linux + NVIDIA ≥6 GB, CPU chạy được nhưng chậm.
 - **Non-goals:** webhook, job nền, MCP từ xa, web UI mới, model fine-tune, Mac/Apple Silicon, nhiều engine, giọng riêng trong `D:\TTS\voices`.
 - **Acceptance:** xem mục Success Criteria.
@@ -37,7 +37,7 @@ Biến ViZipVoice (model gốc 1860k) thành công cụ miễn phí chia sẻ qu
 Phụ thuộc: 1 → 2, 3; 3 → 4, 5; 2, 4, 5 → 6.
 
 ## Success Criteria
-- [ ] Fork `abm-dungtq/tqd-voice` tồn tại, nhánh `tqd/v0.1` đã push, tag `v0.1.0`.
+- [ ] Fork `abm-dungtq/tqd-voicestudio` tồn tại, nhánh `tqd/v0.1` đã push, tag `v0.1.0`.
 - [ ] Không còn đường dẫn `D:/TTS` cứng trong code runtime; production 8001 vẫn chạy với `D:\TTS\start-api.cmd`.
 - [ ] `eval_longform.py compare` in ra quyết định `ADOPT_V2` hoặc `KEEP_LEGACY`; default của `TQD_CHUNKER` khớp quyết định.
 - [ ] Cài mới vào `TQD_VOICE_HOME` trống: `doctor`, `install`, `say`, `clone`, `voices` đều exit 0.

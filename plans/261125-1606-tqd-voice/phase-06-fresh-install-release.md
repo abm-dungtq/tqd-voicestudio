@@ -12,7 +12,7 @@ dependencies: [2, 4, 5]
 # Phase 6: Kiểm tra cài mới + phát hành v0.1.0
 
 ## Goal
-Chứng minh bạn bè cài được từ GitHub và dùng được ngay: cài như một tool `uv` độc lập vào thư mục home trống, chạy đủ lệnh, thử văn bản ~2.700 từ, thử đường CPU, rồi viết README và phát hành tag `v0.1.0` trên `abm-dungtq/tqd-voice`.
+Chứng minh bạn bè cài được từ GitHub và dùng được ngay: cài như một tool `uv` độc lập vào thư mục home trống, chạy đủ lệnh, thử văn bản ~2.700 từ, thử đường CPU, rồi viết README và phát hành tag `v0.1.0` trên `abm-dungtq/tqd-voicestudio`.
 
 ## Context
 - Tất cả push/tag/release/đổi nhánh mặc định là hành động bên ngoài → cook xin xác nhận người dùng trước Task 6.6.
@@ -27,7 +27,7 @@ Chứng minh bạn bè cài được từ GitHub và dùng được ngay: cài n
 
 ### Task 6.1 — Tài liệu
 - Steps:
-  1. `README.md`: chèn ở đầu một khối tiếng Việt ≤ 60 dòng: TQD-Voice là gì; yêu cầu (Windows/Linux, NVIDIA ≥ 6 GB khuyến nghị, CPU chạy được nhưng chậm, ~3 GB ổ đĩa); cài một lệnh (`irm https://raw.githubusercontent.com/abm-dungtq/tqd-voice/v0.1.0/install.ps1 | iex` cho Windows PowerShell, `curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voice/v0.1.0/install.sh | bash` cho Linux) và cài thủ công 3 lệnh; ví dụ `say`, `clone`, `voices`; MCP (`tqd-voice mcp-config`); xử lý sự cố (`tqd-voice doctor`); dòng "Chỉ clone giọng khi người đó đồng ý"; link `docs/TQD_VOICE.md`.
+  1. `README.md`: chèn ở đầu một khối tiếng Việt ≤ 60 dòng: TQD-Voice là gì; yêu cầu (Windows/Linux, NVIDIA ≥ 6 GB khuyến nghị, CPU chạy được nhưng chậm, ~3 GB ổ đĩa); cài một lệnh (`irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.ps1 | iex` cho Windows PowerShell, `curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.1.0/install.sh | bash` cho Linux) và cài thủ công 3 lệnh; ví dụ `say`, `clone`, `voices`; MCP (`tqd-voice mcp-config`); xử lý sự cố (`tqd-voice doctor`); dòng "Chỉ clone giọng khi người đó đồng ý"; link `docs/TQD_VOICE.md`.
   2. `docs/TQD_VOICE.md`: bảng lệnh đầy đủ với mọi tham số đã cài ở phase 3–5; biến môi trường (`TQD_VOICE_HOME`, `TQD_CHUNKER`, `VIZIPVOICE_*`); cấu trúc `~/.tqd-voice`; kết quả eval chunker (sao chép nguyên `D:/TTS/outputs/chunker_eval/v2/compare.txt`); thời gian bài dài từ Task 6.3.
   3. `NOTICE`: TQD-Voice dựa trên ZipVoice (Copyright Xiaomi Corp. / k2-fsa, Apache-2.0 — lấy dòng copyright thật từ header các file `zipvoice/*.py`) và ViZipVoice (iamdinhthuan, Apache-2.0); model tải từ `contextboxai/ViZipvoice` (Apache-2.0), không kèm trong repo.
 - Verify: `grep -c "tqd-voice doctor" README.md` ≥ 1; `test -f NOTICE && test -f docs/TQD_VOICE.md` exit 0.
@@ -58,9 +58,9 @@ Chứng minh bạn bè cài được từ GitHub và dùng được ngay: cài n
   1. Commit "Docs and release prep for TQD-Voice v0.1.0" trên `tqd/v0.1`; quét bí mật như Task 1.3 bước 2.
   2. `git push tqd tqd/v0.1` và `git push tqd tqd/v0.1:master` (fast-forward nhánh mặc định của fork; nếu bị từ chối vì không fast-forward thì STOP theo Failure Protocol, không dùng `--force`).
   3. `git tag -a v0.1.0 -m "TQD-Voice v0.1.0"`; `git push tqd v0.1.0`.
-  4. `gh release create v0.1.0 --repo abm-dungtq/tqd-voice --title "TQD-Voice v0.1.0" --notes-file docs/TQD_VOICE.md`.
-  5. Kiểm tra cài từ GitHub: `uv tool install --reinstall --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@v0.1.0"` rồi `tqd-voice doctor` với `TQD_VOICE_HOME=D:/TTS/tqd-fresh-home`.
-- Verify: `gh release view v0.1.0 --repo abm-dungtq/tqd-voice --json tagName -q .tagName` in `v0.1.0`; lệnh cài bước 5 exit 0; `tqd-voice doctor` exit 0.
+  4. `gh release create v0.1.0 --repo abm-dungtq/tqd-voicestudio --title "TQD-Voice v0.1.0" --notes-file docs/TQD_VOICE.md`.
+  5. Kiểm tra cài từ GitHub: `uv tool install --reinstall --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0"` rồi `tqd-voice doctor` với `TQD_VOICE_HOME=D:/TTS/tqd-fresh-home`.
+- Verify: `gh release view v0.1.0 --repo abm-dungtq/tqd-voicestudio --json tagName -q .tagName` in `v0.1.0`; lệnh cài bước 5 exit 0; `tqd-voice doctor` exit 0.
 
 ## Todo
 - [x] Task 6.1 — Tài liệu

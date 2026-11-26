@@ -10,7 +10,7 @@ dependencies: []
 # Phase 1: Repo setup
 
 ## Goal
-Có fork `abm-dungtq/tqd-voice`; công việc hiện tại được chốt thành commit nền trên nhánh `tqd/baseline` ngay trong `D:\TTS\ViZipvoice` (thư mục production, không đổi nội dung file nào); mọi phát triển tiếp diễn trong worktree riêng `D:\TTS\tqd-voice` nhánh `tqd/v0.1`; mọi đường dẫn runtime đọc từ `TQD_VOICE_HOME` thay vì `D:/TTS` cứng, còn production cổng 8001 vẫn chạy code nền với đường dẫn cũ.
+Có fork `abm-dungtq/tqd-voicestudio`; công việc hiện tại được chốt thành commit nền trên nhánh `tqd/baseline` ngay trong `D:\TTS\ViZipvoice` (thư mục production, không đổi nội dung file nào); mọi phát triển tiếp diễn trong worktree riêng `D:\TTS\tqd-voice` nhánh `tqd/v0.1`; mọi đường dẫn runtime đọc từ `TQD_VOICE_HOME` thay vì `D:/TTS` cứng, còn production cổng 8001 vẫn chạy code nền với đường dẫn cũ.
 
 ## Context
 - Repo local: `D:\TTS\ViZipvoice`, remote `origin` = `iamdinhthuan/ViZipvoice`, nhánh `master`, nhiều file chưa commit (xem `git status`).
@@ -28,12 +28,12 @@ Có fork `abm-dungtq/tqd-voice`; công việc hiện tại được chốt thàn
 ## Tasks
 
 ### Task 1.1 — Tạo fork trên GitHub (hành động bên ngoài, cần người dùng xác nhận trước)
-- Goal: repo `abm-dungtq/tqd-voice` tồn tại và là fork của `iamdinhthuan/ViZipvoice`.
+- Goal: repo `abm-dungtq/tqd-voicestudio` tồn tại và là fork của `iamdinhthuan/ViZipvoice`.
 - Target: GitHub.
 - Steps:
   1. `gh repo fork iamdinhthuan/ViZipvoice --clone=false --fork-name tqd-voice`
 - Success criteria: repo hiện trên tài khoản `abm-dungtq`.
-- Verify: `gh repo view abm-dungtq/tqd-voice --json name,isFork,parent -q '.name+" "+(.isFork|tostring)+" "+.parent.name'` in ra `tqd-voice true ViZipvoice`.
+- Verify: `gh repo view abm-dungtq/tqd-voicestudio --json name,isFork,parent -q '.name+" "+(.isFork|tostring)+" "+.parent.name'` in ra `tqd-voice true ViZipvoice`.
 
 ### Task 1.2 — Dọn .gitignore (trong `D:\TTS\ViZipvoice`)
 - Goal: artifact lớn và dữ liệu không bị commit.
@@ -97,7 +97,7 @@ Có fork `abm-dungtq/tqd-voice`; công việc hiện tại được chốt thàn
 - Verify: (cwd `D:\TTS\tqd-voice`) `PYTHONUTF8=1 $PY -m pytest tests/tqd tests/addons tests/tts_service -q` — chỉ fail đúng `test_generation_ranges_match_public_api_limits`.
 
 ### Task 1.9 — Commit và đẩy nhánh phát triển (push cần người dùng xác nhận)
-- Steps (cwd `D:\TTS\tqd-voice`): quét bí mật như Task 1.3 bước 2; `git add -A`; commit "Configurable data paths for TQD-Voice"; `git remote add tqd https://github.com/abm-dungtq/tqd-voice.git` (remote dùng chung giữa các worktree; bỏ qua nếu đã có); `git push -u tqd tqd/v0.1`.
+- Steps (cwd `D:\TTS\tqd-voice`): quét bí mật như Task 1.3 bước 2; `git add -A`; commit "Configurable data paths for TQD-Voice"; `git remote add tqd https://github.com/abm-dungtq/tqd-voicestudio.git` (remote dùng chung giữa các worktree; bỏ qua nếu đã có); `git push -u tqd tqd/v0.1`.
 - Verify: `git ls-remote tqd tqd/v0.1 | wc -l` in `1`.
 
 ## Todo

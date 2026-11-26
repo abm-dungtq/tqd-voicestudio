@@ -136,7 +136,7 @@ def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
             "error",
             f"Máy có GPU NVIDIA (driver {f.driver_version}) nhưng PyTorch là bản CPU",
             "uv tool install --reinstall --python 3.12 --torch-backend=auto "
-            "git+https://github.com/abm-dungtq/tqd-voice@v0.1.0",
+            "git+https://github.com/abm-dungtq/tqd-voicestudio@v0.1.0",
         ))
     elif f.nvidia_smi:
         cfg.device, cfg.fp16, cfg.max_streams = "cpu", False, 1
