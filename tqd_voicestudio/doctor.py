@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import shutil
 import socket
@@ -39,6 +40,7 @@ class Facts:
     port: int
     port_state: str  # "free" | "tqd" | "other"
     model_present: bool
+    mps_available: bool = False
 
 
 @dataclass
@@ -113,13 +115,41 @@ def collect(cfg: Config) -> Facts:
         port=cfg.port,
         port_state=_port_state(cfg),
         model_present=(paths.model_dir() / "checkpoint-1860000.pt").is_file(),
+        mps_available=bool(getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()),
     )
 
 
 def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
     cfg = replace(base)
     checks: list[Check] = []
-    if f.cuda_available and (f.vram_total_gb or 0) >= 6:
+    forced = os.environ.get("VIZIPVOICE_DEVICE", "").strip().lower()
+    if forced in {"cpu", "cuda", "mps"}:
+        # Explicit env override wins over auto-detection (useful on CI/VMs where
+        # a GPU is visible but not usable, e.g. MPS in virtualized macOS runners).
+        cfg.device = forced
+        cfg.fp16 = forced == "cuda" and bool(f.cuda_available)
+        if forced == "cuda":
+            cfg.max_streams = 4 if (f.vram_total_gb or 0) >= 10 else 2
+        else:
+            cfg.max_streams = 1
+        checks.append(Check("ok", f"VIZIPVOICE_DEVICE={forced}: ép thiết bị theo biến môi trường"))
+    elif f.os == "Darwin":
+        # macOS: never CUDA/NVIDIA advice. Apple Silicon with MPS → experimental mps.
+        if f.arch == "arm64" and f.mps_available:
+            cfg.device, cfg.fp16, cfg.max_streams = "mps", False, 1
+            checks.append(Check(
+                "warn",
+                "Apple Silicon: dùng MPS (GPU) — TÍNH NĂNG THỬ NGHIỆM. "
+                'MPS lỗi thì đặt device = "cpu" trong config.toml',
+            ))
+        else:
+            cfg.device, cfg.fp16, cfg.max_streams = "cpu", False, 1
+            checks.append(Check(
+                "warn",
+                "macOS không có MPS khả dụng: chạy CPU, chậm. "
+                "Đo tốc độ bằng: tqd-voicestudio doctor --bench",
+            ))
+    elif f.cuda_available and (f.vram_total_gb or 0) >= 6:
         vram = f.vram_total_gb
         cfg.device, cfg.fp16 = "cuda", True
         cfg.max_streams = 4 if vram >= 10 else 2
@@ -156,9 +186,11 @@ def recommend(f: Facts, base: Config) -> tuple[Config, list[Check]]:
     if f.ram_total_gb < 8:
         checks.append(Check("warn", f"RAM {f.ram_total_gb:.0f} GB, khuyến nghị ≥ 8 GB"))
     if f.ffmpeg is None:
-        fix = {"Windows": "winget install --id Gyan.FFmpeg -e", "Linux": "sudo apt install ffmpeg"}.get(
-            f.os, "Cài ffmpeg và thêm vào PATH"
-        )
+        fix = {
+            "Windows": "winget install --id Gyan.FFmpeg -e",
+            "Linux": "sudo apt install ffmpeg",
+            "Darwin": "brew install ffmpeg",
+        }.get(f.os, "Cài ffmpeg và thêm vào PATH")
         checks.append(Check("warn", "Thiếu ffmpeg: chỉ xuất được wav", fix))
     if f.port_state == "other":
         checks.append(Check(

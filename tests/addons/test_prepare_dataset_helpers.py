@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,7 +7,35 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "data"))
 import prepare_tts_dataset as ptd  # noqa: E402
 
-TOKENS = "D:/TTS/models/ViZipvoice/tokens.txt"
+
+def _resolve_tokens() -> str:
+    """Locate the real tokenizer vocab portably.
+
+    Order: explicit env override, the dev-box path, the installed model dir,
+    then a small one-off download from the HF model repo (CI machines).
+    """
+    env = os.environ.get("TQD_TOKENS_TXT")
+    candidates = [env] if env else []
+    candidates.append("D:/TTS/models/ViZipvoice/tokens.txt")
+    try:
+        from tqd_voicestudio import paths
+
+        candidates.append(str(paths.model_dir() / "tokens.txt"))
+    except ImportError:
+        pass
+    for cand in candidates:
+        if cand and Path(cand).is_file():
+            return cand
+    from huggingface_hub import hf_hub_download
+
+    return hf_hub_download(
+        "contextboxai/ViZipvoice",
+        "tokens.txt",
+        revision="7903dcb99d5a17c2e59a0ef5f7db32de4bed357b",
+    )
+
+
+TOKENS = _resolve_tokens()
 
 
 def test_load_token_vocab():

@@ -8,7 +8,7 @@ TQD-VoiceStudio là công cụ dòng lệnh đọc văn bản tiếng Việt và
 bạn, xây trên ViZipVoice (model `contextboxai/ViZipvoice`). Có sẵn 30 giọng, server cục bộ kiểu
 OpenAI và MCP cho agent.
 
-**Yêu cầu:** Windows hoặc Linux; GPU NVIDIA từ 6 GB là tốt nhất; không có GPU vẫn chạy được
+**Yêu cầu:** Windows, Linux hoặc macOS; GPU NVIDIA từ 6 GB là tốt nhất; không có GPU vẫn chạy được
 nhưng chậm; cần khoảng 3 GB ổ đĩa.
 
 ## Cài một lệnh
@@ -19,11 +19,19 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.ps1 | iex
 ```
 
-Linux:
+Linux / macOS:
 
 ```bash
 curl -LsSf https://raw.githubusercontent.com/abm-dungtq/tqd-voicestudio/v0.2.0/install.sh | bash
 ```
+
+### macOS
+
+`install.sh` chạy được với bash 3.2 mặc định của macOS. Trên Mac Apple Silicon (M1/M2/M3/M4),
+`tqd-voicestudio doctor` sẽ đề xuất `device = "mps"` (dùng GPU qua Metal) — đây là tính năng
+**thử nghiệm**: nếu gặp lỗi MPS, đặt `device = "cpu"` trong `config.toml`. Thiếu ffmpeg thì cài
+bằng `brew install ffmpeg`. Có thể ép thiết bị bằng biến môi trường `VIZIPVOICE_DEVICE`
+(`auto`/`cuda`/`mps`/`cpu`); `auto` chọn cuda nếu có, rồi đến mps, cuối cùng là cpu.
 
 Hoặc cài thủ công (cần [uv](https://docs.astral.sh/uv/)):
 
