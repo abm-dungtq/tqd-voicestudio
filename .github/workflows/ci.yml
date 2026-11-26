@@ -18,6 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Install ffmpeg (needed by mp3 encode tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Create venv and install deps (CPU torch)
         run: |
           uv venv --python 3.12
