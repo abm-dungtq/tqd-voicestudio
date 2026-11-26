@@ -11,16 +11,16 @@ $commands = @(
 
 if ($DryRun) {
     $commands | ForEach-Object { Write-Output $_ }
-    exit 0
+    return
 }
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Output 'Chưa có uv. Cài bằng: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
-    exit 1
+    return
 }
 
 uv tool install --python 3.12 --torch-backend=auto "git+https://github.com/abm-dungtq/tqd-voice@$Ref"
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { return }
 
 uv tool update-shell | Out-Null
 
@@ -30,4 +30,4 @@ $exe = Join-Path (uv tool dir --bin) "tqd-voice.exe"
 if ($LASTEXITCODE -ne 0) { Write-Warning "doctor báo lỗi; 'tqd-voice install' sẽ tự dừng nếu lỗi chặn cài đặt." }
 
 & $exe install
-exit $LASTEXITCODE
+return
