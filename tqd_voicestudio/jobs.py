@@ -259,9 +259,17 @@ class JobManager:
                     pauses.append((a + offset, b + offset))
                 pieces.append(np.asarray(wav, dtype=np.float32))
                 offset += len(wav)
+            current = self.store.get_job(jid) or {}
+            if (
+                jid in self._cancel
+                or current.get("cancel_requested")
+                or current.get("status") == "canceled"
+            ):
+                raise JobCanceled()
             combined = np.concatenate(pieces) if pieces else np.zeros(NATIVE_SR // 10, dtype=np.float32)
             hid = self.assemble(request, combined, segments, pauses, bool(row["subtitles"]))
-            self.store.update_job(jid, status="done", history_id=hid, finished_at=time.time())
+            if not self.store.complete_job(jid, hid, time.time()):
+                raise JobCanceled()
         except JobCanceled:
             self.store.update_job(jid, status="canceled", finished_at=time.time())
         except Exception as exc:

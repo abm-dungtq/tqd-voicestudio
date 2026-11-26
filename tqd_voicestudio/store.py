@@ -164,6 +164,14 @@ class Store:
         )
         return cur.rowcount == 1
 
+    def complete_job(self, jid: str, history_id: str, finished_at: float) -> bool:
+        """Atomically finish a running job; false when cancellation won the race."""
+        cur = self._exec(
+            "UPDATE jobs SET status='done', history_id=?, finished_at=? WHERE id=? AND status='running'",
+            (history_id, finished_at, jid),
+        )
+        return cur.rowcount == 1
+
     def delete_job(self, jid: str) -> bool:
         cur = self._exec("DELETE FROM jobs WHERE id=?", (jid,))
         return cur.rowcount == 1

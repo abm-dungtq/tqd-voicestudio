@@ -124,6 +124,33 @@ def test_store_update_failure_in_failure_handler_marks_job_failed(tmp_path, capl
     store.close()
 
 
+def test_cancel_during_single_segment_render_cannot_be_overwritten_by_done(tmp_path):
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def render(request, seg):
+        started.set()
+        release.wait(5)
+        return tone(10), [], []
+
+    store, mgr, assembled = make_manager(tmp_path, render)
+    jid = mgr.submit({"input": "x"}, [{"voice": "A", "text": "a", "join": None}], None, True)
+    mgr.start()
+    assert started.wait(5)
+    assert mgr.cancel(jid) == "canceled"
+    release.set()
+    end = time.time() + 5
+    while time.time() < end and store.get_job(jid)["status"] != "canceled":
+        time.sleep(0.05)
+    time.sleep(0.1)  # allow any erroneous late done transition to appear
+    mgr.stop()
+    assert store.get_job(jid)["status"] == "canceled"
+    assert "wav" not in assembled
+    store.close()
+
+
 def test_canceled_queued_job_never_renders_when_worker_claims(tmp_path):
     calls = []
 
