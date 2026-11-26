@@ -478,9 +478,9 @@ class ViZipVoiceTTS:
         ) as segment_dir_name:
             segment_dir = Path(segment_dir_name)
             with torch.autocast(
-                device_type="cuda",
+                device_type=self.device.type,
                 dtype=torch.float16,
-                enabled=self.use_fp16,
+                enabled=self.use_fp16 and self.device.type == "cuda",
             ):
                 for index, sentence in enumerate(target_sentences, start=1):
                     sentence_num_step, sentence_speed, word_count = (

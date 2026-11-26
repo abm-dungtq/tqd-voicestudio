@@ -148,6 +148,10 @@ LIBRARY_DIR = (
 CUSTOM_VOICES_DIR = paths.voices_dir()
 
 MAX_STREAMS = int(os.environ.get("VIZIPVOICE_MAX_STREAMS", "4"))
+_dev = os.environ.get("VIZIPVOICE_DEVICE", "auto").strip().lower()
+DEVICE = ("cuda" if torch.cuda.is_available() else "cpu") if _dev == "auto" else _dev
+USE_FP16 = DEVICE == "cuda" and os.environ.get("VIZIPVOICE_FP16", "1").strip() not in ("0", "false", "no")
+NUM_STEP = int(os.environ.get("VIZIPVOICE_NUM_STEP", "16"))
 CHUNKER_MODE = os.environ.get("TQD_CHUNKER", "legacy").strip().lower()
 if CHUNKER_MODE not in {"legacy", "v2"}:
     raise ValueError(f"TQD_CHUNKER must be legacy|v2, got {CHUNKER_MODE}")
@@ -547,8 +551,8 @@ class ViZipVoiceEngine:
         self.tts = ViZipVoiceTTS(
             model_dir=MODEL_DIR,
             checkpoint_name="checkpoint-1860000.pt",
-            device="cuda",
-            use_fp16=True,
+            device=DEVICE,
+            use_fp16=USE_FP16,
             num_threads=4,
         )
         self._load_studio_voices()
@@ -938,7 +942,7 @@ class ViZipVoiceEngine:
         self,
         sentence: str,
         entry: VoiceEntry,
-        num_step: int = 16,
+        num_step: int = NUM_STEP,
         guidance_scale: float = 1.0,
         speed: float = 1.0,
         t_shift: float = 0.5,
@@ -966,7 +970,9 @@ class ViZipVoiceEngine:
         )
 
         chunked_features = []
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=self.tts.use_fp16):
+        with torch.autocast(
+            device_type="cuda" if DEVICE == "cuda" else "cpu", dtype=torch.float16, enabled=self.tts.use_fp16
+        ):
             for batch_tokens in tokens_batches:
                 fix_random_seed(seed)
                 batch_prompt_tokens = entry.prompt_tokens * len(batch_tokens)
@@ -1034,7 +1040,7 @@ class ViZipVoiceEngine:
         entry: VoiceEntry,
         speed: Optional[float] = None,
         style: Optional[str] = "auto",
-        num_step: int = 16,
+        num_step: int = NUM_STEP,
         crossfade_ms: int = 75,
         silence_ms: int = 190,
         fade_in_ms: int = 20,
@@ -1198,7 +1204,7 @@ def health():
         return JSONResponse({"status": "loading"}, status_code=503)
     return {
         "status": "ok",
-        "backend": "vizipvoice-fp16",
+        "backend": f"vizipvoice-{DEVICE}-{'fp16' if USE_FP16 else 'fp32'}",
         "max_streams": engine.max_streams,
         "active": engine.active,
         "waiting": engine.waiting,
