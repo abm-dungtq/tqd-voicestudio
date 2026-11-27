@@ -5,16 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>TQD-VoiceStudio</title>
+  <meta name="theme-color" content="#241f33">
+  <script>
+    (function(){
+      var t = localStorage.getItem('tqd.theme') || 'dark';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <h1>TQD-VoiceStudio</h1>
-      <p>Đọc tiếng Việt, clone giọng và quản lý job</p>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <rect x="2" y="9" width="2.6" height="6" rx="1.3" fill="oklch(0.79 0.14 85)" opacity=".55"/>
+          <rect x="6.4" y="5.5" width="2.6" height="13" rx="1.3" fill="oklch(0.79 0.14 85)"/>
+          <rect x="10.8" y="8" width="2.6" height="8" rx="1.3" fill="oklch(0.85 0.15 88)"/>
+          <rect x="15.2" y="3.5" width="2.6" height="17" rx="1.3" fill="oklch(0.79 0.14 85)"/>
+          <rect x="19.6" y="10" width="2.6" height="4.5" rx="1.3" fill="oklch(0.79 0.14 85)" opacity=".55"/>
+        </svg>
+      </span>
+      <div>
+        <h1>TQD-<b>VoiceStudio</b></h1>
+        <p>Đọc tiếng Việt, clone giọng và quản lý job</p>
+      </div>
     </div>
     <div class="top-actions">
       <span id="serverState" class="pill">Đang kiểm tra…</span>
+      <button id="themeBtn" class="ghost icon-btn" type="button" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/>
+        </svg>
+      </button>
       <button id="keyBtn" class="ghost" type="button">API key</button>
     </div>
   </header>
@@ -32,12 +58,12 @@
   <div id="banner" class="banner hidden" role="alert"></div>
 
   <nav class="tabs" aria-label="Điều hướng chính">
-    <button class="tab active" data-tab="read" type="button">Đọc</button>
-    <button class="tab" data-tab="clone" type="button">Clone giọng</button>
-    <button class="tab" data-tab="library" type="button">Thư viện giọng</button>
-    <button class="tab" data-tab="jobs" type="button">Job</button>
-    <button class="tab" data-tab="history" type="button">Lịch sử</button>
-    <button class="tab" data-tab="settings" type="button">Cài đặt</button>
+    <button class="tab active" data-tab="read" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.5 8.5H3v7h3.5L11 19V5z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a8 8 0 0 1 0 10"/></svg>Đọc</button>
+    <button class="tab" data-tab="clone" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Clone giọng</button>
+    <button class="tab" data-tab="library" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Thư viện giọng</button>
+    <button class="tab" data-tab="jobs" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 4.9v9.9L12 22l-9-5.1V6.9L12 2z" opacity=".0"/><path d="M4 6h16M4 12h16M4 18h10"/></svg>Job</button>
+    <button class="tab" data-tab="history" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3.5 2"/></svg>Lịch sử</button>
+    <button class="tab" data-tab="settings" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>Cài đặt</button>
   </nav>
 
   <main>
@@ -121,7 +147,10 @@
           <label>Webhook URL cho job <input id="webhookUrl" type="url" placeholder="https://… (tuỳ chọn)"></label>
         </details>
         <div class="row wrap">
-          <button id="speakBtn" class="primary" type="button">Đọc</button>
+          <button id="speakBtn" class="primary" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="3" y="9" width="2.4" height="6" rx="1.2" opacity=".65"/><rect x="7.2" y="5" width="2.4" height="14" rx="1.2"/><rect x="11.4" y="8" width="2.4" height="8" rx="1.2"/><rect x="15.6" y="6" width="2.4" height="12" rx="1.2"/><rect x="19.8" y="10" width="2.4" height="4" rx="1.2" opacity=".65"/>
+            </svg>Đọc</button>
           <span id="speakSpinner" class="spinner hidden" aria-label="Đang xử lý"></span>
           <span id="elapsed" class="muted"></span>
         </div>
@@ -213,6 +242,52 @@
     </section>
   </main>
 
+  <script>
+    (function(){
+      function paintRange(el){
+        var min = parseFloat(el.min || 0), max = parseFloat(el.max || 100), v = parseFloat(el.value || 0);
+        el.style.setProperty('--fill', ((v - min) / (max - min) * 100) + '%');
+      }
+      function paintAll(){ document.querySelectorAll('input[type=range]').forEach(paintRange); }
+      document.addEventListener('input', function(e){
+        if (e.target && e.target.type === 'range') paintRange(e.target);
+      });
+      function proxyFile(input, hint){
+        if (!input || input.dataset.proxied) return;
+        input.dataset.proxied = '1';
+        input.classList.add('file-native');
+        var proxy = document.createElement('span');
+        proxy.className = 'file-proxy';
+        proxy.setAttribute('role', 'button');
+        proxy.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>'
+          + '<span class="file-name"></span><span class="file-hint"></span>';
+        var nameEl = proxy.querySelector('.file-name');
+        var hintEl = proxy.querySelector('.file-hint');
+        function sync(){
+          var f = input.files && input.files[0];
+          nameEl.textContent = f ? f.name : '';
+          hintEl.textContent = f ? '' : hint;
+          proxy.classList.toggle('has-file', !!f);
+        }
+        proxy.addEventListener('click', function(){ input.click(); });
+        input.addEventListener('change', sync);
+        sync();
+        input.insertAdjacentElement('afterend', proxy);
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        paintAll();
+        proxyFile(document.getElementById('cloneFile'), 'Chọn file audio — wav, mp3, flac (3–10 giây)');
+        proxyFile(document.getElementById('importFile'), 'Chọn file .txt, .md, .docx, .pdf');
+        proxyFile(document.getElementById('musicUploadFile'), 'Chọn file nhạc nền');
+        var btn = document.getElementById('themeBtn');
+        if (btn) btn.addEventListener('click', function(){
+          var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+          document.documentElement.dataset.theme = next;
+          localStorage.setItem('tqd.theme', next);
+        });
+      });
+    })();
+  </script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>
