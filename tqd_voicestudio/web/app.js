@@ -162,11 +162,74 @@
   }
 
   async function loadVoices() {
-    const q = voiceQuery($('filterGender'), $('filterRegion'), $('filterKind'));
-    const { data } = await api(`/v1/voices${q}`);
+    const { data } = await api('/v1/voices');
     state.voices = data.data || [];
     fillVoiceSelect($('voiceSelect'), state.voices);
+    renderVoicePicker();
     renderRoles();
+  }
+
+  function renderVoicePicker() {
+    const box = $('voicePicker');
+    if (!box) return;
+    const q = ($('voiceSearch') && $('voiceSearch').value || '').trim().toLowerCase();
+    const voices = state.voices.filter((v) => !q
+      || v.name.toLowerCase().includes(q)
+      || (v.description || '').toLowerCase().includes(q));
+    box.innerHTML = '';
+    if (!voices.length) {
+      box.innerHTML = '<div class="muted picker-empty">Không có giọng phù hợp.</div>';
+      return;
+    }
+    for (const v of voices) {
+      const row = document.createElement('div');
+      row.className = 'voice-row' + (v.name === $('voiceSelect').value ? ' selected' : '');
+      row.dataset.voice = v.name;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', v.name === $('voiceSelect').value ? 'true' : 'false');
+      const meta = [];
+      if (v.gender) meta.push(v.gender === 'female' ? 'Nữ' : 'Nam');
+      if (v.region) meta.push(v.region);
+      if (v.kind) meta.push(v.kind === 'preset' ? 'có sẵn' : 'clone');
+      const info = document.createElement('div');
+      info.className = 'voice-info';
+      const nm = document.createElement('div');
+      nm.className = 'voice-name';
+      nm.textContent = v.name;
+      const mt = document.createElement('div');
+      mt.className = 'voice-meta';
+      let desc = (v.description || '').replace(/^\s*(Nữ|Nam)\s*·\s*(Bắc|Trung|Nam)\s*·\s*/u, '');
+      mt.textContent = meta.join(' · ') + (desc ? ` — ${desc}` : '');
+      info.append(nm, mt);
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'ghost voice-play';
+      play.title = 'Nghe mẫu';
+      play.setAttribute('aria-label', `Nghe mẫu ${v.name}`);
+      play.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5z"/></svg>';
+      play.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playSample(v.name, $('sampleAudio')).catch((err) => showBanner(err.message, true));
+      });
+      row.append(info, play);
+      row.addEventListener('click', () => {
+        $('voiceSelect').value = v.name;
+        $('voiceSelect').dispatchEvent(new Event('change', { bubbles: true }));
+        syncVoicePickerSelection();
+      });
+      box.appendChild(row);
+    }
+  }
+
+  function syncVoicePickerSelection() {
+    const box = $('voicePicker');
+    if (!box) return;
+    const cur = $('voiceSelect').value;
+    for (const row of box.querySelectorAll('.voice-row')) {
+      const on = row.dataset.voice === cur;
+      row.classList.toggle('selected', on);
+      row.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
   }
 
   async function loadLibrary() {
@@ -696,7 +759,8 @@
     });
 
     $('inputText').addEventListener('input', updateCounts);
-    for (const id of ['filterGender', 'filterRegion', 'filterKind']) $(id).addEventListener('change', () => loadVoices().catch((e) => showBanner(e.message, true)));
+    if ($('voiceSearch')) $('voiceSearch').addEventListener('input', () => renderVoicePicker());
+    $('voiceSelect').addEventListener('change', syncVoicePickerSelection);
     for (const id of ['libraryGender', 'libraryRegion', 'libraryKind']) $(id).addEventListener('change', () => loadLibrary().catch((e) => showBanner(e.message, true)));
     $('librarySearch').addEventListener('input', () => loadLibrary().catch(() => {}));
     $('reloadVoicesBtn').addEventListener('click', () => Promise.all([loadVoices(), loadLibrary()]).catch((e) => showBanner(e.message, true)));

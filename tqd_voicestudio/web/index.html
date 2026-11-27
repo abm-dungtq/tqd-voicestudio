@@ -96,15 +96,12 @@
 
         <div class="card">
           <h2>Giọng &amp; âm thanh</h2>
-          <div class="filters row wrap">
-            <select id="filterGender" aria-label="Lọc giới tính"><option value="">Giới tính</option><option value="male">Nam</option><option value="female">Nữ</option></select>
-            <select id="filterRegion" aria-label="Lọc vùng"><option value="">Vùng</option><option value="Bắc">Bắc</option><option value="Trung">Trung</option><option value="Nam">Nam</option></select>
-            <select id="filterKind" aria-label="Lọc loại"><option value="">Loại</option><option value="preset">Có sẵn</option><option value="custom">Tự clone</option></select>
-          </div>
-          <div class="row">
-            <select id="voiceSelect" aria-label="Chọn giọng"></select>
+          <div class="picker-head">
+            <input id="voiceSearch" type="search" placeholder="Tìm giọng theo tên…" aria-label="Tìm giọng">
             <button id="sampleVoiceBtn" type="button" class="ghost">Nghe mẫu</button>
           </div>
+          <div id="voicePicker" class="voice-picker" role="listbox" aria-label="Danh sách giọng"></div>
+          <select id="voiceSelect" class="sr-only" aria-label="Chọn giọng" tabindex="-1"></select>
           <audio id="sampleAudio" controls class="hidden"></audio>
           <label>Tốc độ <span id="speedValue">1.00</span>x
             <input id="speedInput" type="range" min="0.5" max="2" step="0.05" value="1">
