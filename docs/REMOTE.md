@@ -4,22 +4,53 @@ Tài liệu này dành cho **agent** (Claude Code, Cursor, hoặc MCP client b�
 cần dùng server TQD-VoiceStudio trên máy A (máy có GPU) qua mạng riêng Tailscale — để đọc văn bản
 tiếng Việt thành audio, clone giọng và chạy job dài.
 
-> Người đọc nhanh: phần 1–2 là việc của **người** (bật server một lần). Từ phần 3 trở đi là
-> tài liệu tham chiếu cho **agent** — có thể dán nguyên vào system prompt hoặc file context
-> của agent trên máy B.
+> Phần 1–3 là việc của **người** trên máy A (làm một lần). Từ phần 4 trở đi là tài liệu tham
+> chiếu cho **agent** — có thể dán nguyên vào system prompt hoặc file context của agent trên máy B.
+
+Ký hiệu dùng xuyên suốt: `<BASE>` = địa chỉ server, `<KEY>` = API key.
 
 ---
 
-## 1. Bật server một lần (máy A — người làm)
+## 1. Bật server một lần (máy A)
 
 ```bash
-tailscale ip -4                    # lấy IP máy A, dạng 100.x.y.z
-tqd-voicestudio key new            # tạo API key (hoặc: key show để xem lại)
+tailscale ip -4                    # IP máy A, dạng 100.x.y.z
+tqd-voicestudio key new            # tạo API key (key show để xem lại)
 ```
 
-Sửa `host = "0.0.0.0"` trong `config.toml` rồi khởi động lại server (`tqd-voicestudio stop`
-rồi chạy bất kỳ lệnh nào, hoặc `tqd-voicestudio serve --host 0.0.0.0`). Server không có key
-sẽ từ chối bind ngoài loopback. Mở firewall chỉ cho dải Tailscale:
+Sửa `host = "0.0.0.0"` trong `config.toml` rồi khởi động lại server. Server không có key sẽ
+từ chối bind ngoài loopback. **Cơ chế:** `tqd-voicestudio serve` đọc `config.toml` và xuất ra
+biến môi trường `PORT_HOST`/`PORT`/`VIZIPVOICE_API_KEY` cho tiến trình server — nếu chạy
+`vizipvoice_openai_server.py` trực tiếp (dev) thì phải tự set 3 biến đó, không là server rơi về
+mặc định `127.0.0.1:8001`.
+
+## 2. Khuyến nghị chính: đi qua HTTPS của Tailscale Serve
+
+Đây là đường kết nối **đáng tin nhất**, đã kiểm chứng thực tế:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:8765
+```
+
+- `<BASE>` = `https://<tên-máy>.<tailnet>.ts.net` (ví dụ `https://xabm-pc.tail496c36.ts.net`)
+- Tailscale terminate TLS rồi forward vào `127.0.0.1` — traffic không đi qua Windows Firewall
+  inbound nên **không cần mở rule**, đồng thời có mã hoá đầu-cuối-trong-tailnet.
+- Với cách này server chỉ cần bind `127.0.0.1` là đủ cho agent — vẫn nên đặt key vì HTTPS chỉ
+  mã hoá đường truyền, không thay thế xác thực. Bind `0.0.0.0` chỉ khi còn muốn cho truy cập
+  IP trực tiếp (mục 3).
+
+Kiểm tra từ máy B:
+
+```bash
+curl https://<tên-máy>.<tailnet>.ts.net/health      # phải ra 200, không cần key
+```
+
+Nếu ra `502`: serve đang trỏ sai cổng backend (`tailscale serve status` để xem) hoặc server chưa chạy.
+
+## 3. Phương án phụ: IP trực tiếp + firewall
+
+Nếu muốn `<BASE>` = `http://100.x.y.z:8765` (HTTP trần trong tailnet): server bắt buộc bind
+`0.0.0.0` hoặc IP tailscale, và phải mở firewall **chỉ cho dải Tailscale**:
 
 ```powershell
 # Windows, PowerShell quyền Administrator
@@ -32,31 +63,46 @@ New-NetFirewallRule -DisplayName "TQD-VoiceStudio (Tailscale)" -Direction Inboun
 sudo ufw allow from 100.64.0.0/10 to any port 8765 proto tcp
 ```
 
-Không bao giờ mở cổng này ra Internet công cộng. Từ đây gọi `<BASE>` = `http://100.x.y.z:8765`
-và `<KEY>` = API key.
-
-## 2. Kiểm chứng kết nối trước khi cấu hình agent
+Không bao giờ mở cổng này ra Internet công cộng. Kiểm chứng từ máy B:
 
 ```bash
-curl <BASE>/health                          # phải ra 200, không cần key
-curl -s -o /dev/null -w "%{http_code}\n" <BASE>/v1/voices     # phải ra 401
-curl -H "Authorization: Bearer <KEY>" <BASE>/v1/voices        # phải ra 200 + JSON giọng
+curl <BASE>/health                                            # 200, không cần key
+curl -s -o /dev/null -w "%{http_code}\n" <BASE>/v1/voices     # 401 (auth bật đúng)
+curl -H "Authorization: Bearer <KEY>" <BASE>/v1/voices        # 200 + JSON giọng
 ```
 
-Smoke test end-to-end (in `REMOTE_MCP_OK` khi đủ chuẩn):
+Smoke test end-to-end đầy đủ (in `REMOTE_MCP_OK` khi đủ chuẩn — kiểm tra cả auth, list voices,
+audio inline và tải history):
 
 ```bash
 python scripts/smoke/remote_mcp_smoke.py --url <BASE>/mcp --key <KEY>
 ```
 
-## 3. Cấu hình MCP cho agent (máy B)
+## 4. Tự động chạy server khi máy A khởi động
+
+**Windows (không cần quyền admin):** tạo file `tqd-voicestudio.vbs` trong
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` với nội dung:
+
+```vbscript
+CreateObject("Wscript.Shell").Run "D:\path\to\start-server.cmd", 0, False
+```
+
+trong đó `start-server.cmd` set đủ biến môi trường (`PORT_HOST`, `PORT`, `VIZIPVOICE_API_KEY`,
+đường dẫn model/voices nếu dev) rồi gọi python chạy server, redirect log ra file. Cách này chạy
+ẩn khi user đăng nhập, không cần admin (khác với `schtasks /sc onlogon` vốn yêu cầu elevate
+trên nhiều máy).
+
+**Linux:** systemd user unit (`systemctl --user`) với `Restart=on-failure`, hoặc `@reboot`
+trong cron kèm `tailscaled` đã bật.
+
+## 5. Cấu hình MCP cho agent (máy B)
 
 Server nói **MCP Streamable HTTP** tại `<BASE>/mcp`, xác thực `Authorization: Bearer <KEY>`.
 
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http tqd-voicestudio http://100.x.y.z:8765/mcp \
+claude mcp add --transport http tqd-voicestudio <BASE>/mcp \
   --header "Authorization: Bearer <KEY>"
 ```
 
@@ -64,7 +110,7 @@ claude mcp add --transport http tqd-voicestudio http://100.x.y.z:8765/mcp \
 
 ```json
 {"mcpServers": {"tqd-voicestudio": {
-  "url": "http://100.x.y.z:8765/mcp",
+  "url": "<BASE>/mcp",
   "headers": {"Authorization": "Bearer <KEY>"}}}
 ```
 
@@ -72,13 +118,13 @@ claude mcp add --transport http tqd-voicestudio http://100.x.y.z:8765/mcp \
 `command` = `tqd-voicestudio`, `args` = `["mcp"]`, env:
 
 ```
-VIZIPVOICE_API_URL=http://100.x.y.z:8765
+VIZIPVOICE_API_URL=<BASE>
 VIZIPVOICE_API_KEY=<KEY>
 ```
 
-In sẵn cả 3 dạng cấu hình: `tqd-voicestudio mcp-config --remote http://100.x.y.z:8765`
+In sẵn cả 3 dạng cấu hình: `tqd-voicestudio mcp-config --remote <BASE>`
 
-## 4. Tham chiếu tools cho agent
+## 6. Tham chiếu tools cho agent
 
 Server có **5 tools**. Lần gọi đầu tiên sau khi server khởi động có thể mất 1–2 phút nạp model —
 agent nên báo người dùng chờ thay vì retry.
@@ -101,7 +147,7 @@ hợp nội dung). Cũng có sẵn như resource `vizipvoice://voices`.
 - Text block kèm theo luôn có `size_bytes`, `duration_seconds`, `history_id`.
 
 **Giới hạn quan trọng:** tool này là đọc đồng bộ một giọng — phù hợp văn bản ngắn (vài câu).
-Văn bản dài, nhiều vai, cần phụ đề/nhạc nền: dùng `create_job` hoặc REST API (mục 5).
+Văn bản dài, nhiều vai, cần phụ đề/nhạc nền: dùng `create_job` hoặc REST API (mục 7).
 
 ### `create_job(text, voice_id?, response_format?, speed?, normalize?, trim_silence?, music_id?, webhook_url?)`
 
@@ -133,7 +179,7 @@ agent phải xác nhận điều này với người dùng trước khi gọi.
 - Sau khi tạo xong, giọng dùng được ngay qua `voice_id=name` và xuất hiện trong `list_voices`.
   `force=true` để ghi đè giọng clone cùng tên (cache các bản đọc cũ bằng giọng đó tự mất hiệu lực).
 
-## 5. REST API — khi cần tính năng MCP chưa bao phủ
+## 7. REST API — khi cần tính năng MCP chưa bao phủ
 
 Mọi endpoint (trừ `GET /health`) cần `Authorization: Bearer <KEY>`. JSON in/out.
 Một số việc chỉ làm được qua REST:
@@ -159,43 +205,33 @@ curl -X POST <BASE>/v1/audio/speech \
   --output hoi-thoai.mp3
 ```
 
-## 6. Cách agent nên dùng (workflow gợi ý)
+## 8. Cách agent nên dùng (workflow gợi ý)
 
 1. **Câu ngắn, một giọng** → `synthesize_speech`. Chọn giọng bằng cách đọc `description`
    trong `list_voices` thay vì đoán từ tên.
 2. **Bài dài / hơn ~300 từ** → `create_job` rồi poll `job_status`; không nhét vào
    `synthesize_speech` (dễ vượt inline 8 MB và timeout client).
-3. **Hội thoại nhiều nhân vật** → REST `/v1/audio/speech` với `cast` (xem mục 5).
+3. **Hội thoại nhiều nhân vật** → REST `/v1/audio/speech` với `cast` (xem mục 7).
 4. **Clone giọng** → hỏi người dùng xác nhận đồng ý, đọc file clip thành base64, gọi
    `create_voice` kèm `ref_text` nếu có — transcript đúng cho giọng ổn định hơn nhiều.
 5. **Sản xuất podcast/video** → job + `normalize=true` + `subtitles` + nhạc nền qua `music`.
 6. **Lỗi 401/503** → không retry vô hạn: 401 là sai key (báo người dùng), 503 là server đang
    nạp model (chờ `GET /health` ok rồi gọi lại).
 
-## 7. Tailscale HTTPS (tùy chọn)
-
-Muốn `https://` hợp lệ trong tailnet mà không mở cổng: giữ server ở `127.0.0.1` và
-
-```bash
-tailscale serve --bg --https=443 http://127.0.0.1:8765
-# client dùng https://<tên-máy>.<tailnet>.ts.net/mcp
-```
-
-Key vẫn nên đặt — HTTPS chỉ mã hoá đường truyền, không thay thế xác thực.
-
-## 8. Lỗi thường gặp
+## 9. Lỗi thường gặp
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `401 invalid or missing bearer token` | Sai key / thiếu header | `tqd-voicestudio key show` ở máy A; kiểm tra `Authorization: Bearer ...` |
-| Server không khởi động, mã thoát 2 | Bind ngoài loopback mà chưa có key | `tqd-voicestudio key new` rồi khởi động lại |
-| `curl` treo / timeout | Firewall chặn | Rule ở mục 1; `Get-NetFirewallRule` trên Windows |
-| Không ping được IP `100.x` | Tailscale offline một đầu | `tailscale status` cả hai máy |
-| `Connection refused` | Server chưa chạy hoặc bind `127.0.0.1` | Kiểm tra `host` trong `config.toml` |
+| HTTPS `ts.net` trả **502** | Serve trỏ sai cổng backend, hoặc server chưa chạy | `tailscale serve status` trên máy A; kiểm tra `curl 127.0.0.1:8765/health` tại máy A |
+| `http://100.x:8765` **timeout** (không refused) | Windows Firewall drop gói inbound | Rule ở mục 3 — hoặc chuyển sang đường HTTPS (mục 2) không cần rule |
+| `Connection refused` | Server chưa chạy / bind sai | Kiểm tra process và `netstat` trên máy A |
+| Server chết sau khi terminal đóng | Chạy như tiến trình con của shell | Auto-start theo mục 4 |
+| Server bind nhầm `127.0.0.1:8001` | Chạy script trực tiếp mà thiếu env | Set `PORT`/`PORT_HOST`/`VIZIPVOICE_API_KEY` (mục 1) hoặc chạy qua CLI |
+| `401 invalid or missing bearer token` | Sai key / thiếu header | `tqd-voicestudio key show` ở máy A |
 | `/mcp` trả 503 | Server đang nạp model | Đợi `GET /health` ra `status: ok` |
+| Không ping được IP `100.x` | Tailscale offline một đầu | `tailscale status` cả hai máy |
 | `create_voice` báo thiếu audio | Qua HTTP nhưng gửi `reference_audio_path` | Dùng `audio_base64` + `filename` |
 | Audio quá lớn không inline | > 8 MB | Tải qua `download_path` kèm Bearer, hoặc dùng job |
-| Claude Desktop không thấy tool | Chưa qua cầu nối stdio | Cấu hình stdio ở mục 3 |
 
 **Bảo mật:** không ghi key vào file nằm trong repo; không gửi key cho bên thứ ba; key chỉ nên
 nằm trong cấu hình MCP client của máy B.
